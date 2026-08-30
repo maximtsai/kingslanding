@@ -896,7 +896,7 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
   const dustGeo = new THREE.IcosahedronGeometry(0.06, 0);
   const dust = Array.from({ length: 6 }, (_, k) => {
     const material = new THREE.MeshBasicMaterial({
-      color: 0xcbbd9f, transparent: true, opacity: 0, depthWrite: false
+      color: 0xcbbd9f, transparent: false, opacity: 1, depthWrite: true
     });
     const mesh = new THREE.Mesh(dustGeo, material);
     mesh.visible = false;
@@ -908,10 +908,12 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
   function burstDust(x, y, z) {
     for (const puff of dust) {
       puff.age = 0;
+      puff.life = 0.432 + Math.random() * 0.216;
+      puff.startScale = 1.08 + Math.random() * 0.78;
       puff.x = x; puff.y = y + 0.025; puff.z = z;
       puff.mesh.position.set(puff.x, puff.y, puff.z);
-      puff.mesh.scale.setScalar(0.7);
-      puff.mesh.material.opacity = 0.46;
+      puff.mesh.scale.setScalar(puff.startScale);
+      puff.mesh.material.opacity = 1;
       puff.mesh.visible = true;
     }
   }
@@ -920,15 +922,15 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
     for (const puff of dust) {
       if (puff.age === Infinity) continue;
       puff.age += dt;
-      const t = Math.min(1, puff.age / 0.45);
+      const t = Math.min(1, puff.age / puff.life);
       const spread = puff.distance * (1 - Math.pow(1 - t, 2));
       puff.mesh.position.set(
         puff.x + Math.cos(puff.angle) * spread,
         puff.y + Math.sin(Math.PI * t) * 0.07,
         puff.z + Math.sin(puff.angle) * spread
       );
-      puff.mesh.scale.setScalar(0.7 + t * 1.1);
-      puff.mesh.material.opacity = (1 - t) * 0.46;
+      puff.mesh.scale.setScalar(puff.startScale * (1 - t));
+      puff.mesh.material.opacity = 1;
       if (t >= 1) { puff.mesh.visible = false; puff.age = Infinity; }
     }
   }

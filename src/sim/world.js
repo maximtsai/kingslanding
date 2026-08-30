@@ -231,8 +231,8 @@ export function createWorld(board) {
         if (score < bestScore) { bestScore = score; home = [ci, cj]; }
       }
     }
-    const onCastleSpot = hero.x >= i && hero.x < i + span &&
-      hero.z >= j && hero.z < j + span;
+    const onCastleSpot = world.hero.x >= i && world.hero.x < i + span &&
+      world.hero.z >= j && world.hero.z < j + span;
     if (onCastleSpot && home) heroControl.setHome(home[0], home[1]);
     world.phase = PHASE.BUILD;
     world.refreshPreview();

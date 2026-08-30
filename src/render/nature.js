@@ -14,6 +14,9 @@ const FLOWER_ATTEMPTS = 260;
 export function buildNature(ctx) {
   const { THREE, board, kit, soft, props, rand, used, K, SINK } = ctx;
   const { N, at, px, topY } = board;
+  const levelOneTierTwoBushes = board.level.id === 'one';
+  const stairTiles = new Set((board.level.ramps || []).flatMap(([low, high]) => [low, high])
+    .map(([i, j]) => K(i, j)));
   const { mat } = kit;
 
   // Canopies are built from tone-graded shells -- darkest at the trunk, lightest
@@ -24,7 +27,11 @@ export function buildNature(ctx) {
   const treeTrunkGeo = new THREE.CylinderGeometry(0.045, 0.065, 0.42, 5);
   const foliageGeo = new THREE.IcosahedronGeometry(1, 0);
 
-  function tree(x, y, z, hgt) {
+  function tree(x, y, z, hgt, simple = false) {
+    if (simple) {
+      bush(x, y, z, hgt * 0.32);
+      return;
+    }
     const trunk = new THREE.Mesh(treeTrunkGeo, mat(0x6d563c));
     trunk.scale.setScalar(hgt);
     trunk.position.set(x, y + hgt * 0.18 - SINK, z);
@@ -55,7 +62,7 @@ export function buildNature(ctx) {
   // tile is water or already spoken for.
   function pick(fi, fj) {
     const i = Math.round(fi), j = Math.round(fj);
-    if (!at(i, j) || used.has(K(i, j))) return null;
+    if (!at(i, j) || used.has(K(i, j)) || stairTiles.has(K(i, j))) return null;
     return { i, j };
   }
 
@@ -64,7 +71,11 @@ export function buildNature(ctx) {
       const a = rand() * 6.28, d = gr * Math.sqrt(rand());
       const fi = gi + Math.cos(a) * d, fj = gj + Math.sin(a) * d;
       const hit = pick(fi, fj);
-      if (hit) tree(px(fi), topY(hit.i, hit.j), px(fj), 0.58 + rand() * 0.32);
+      if (hit) {
+        const hgt = 0.58 + rand() * 0.32;
+        const simple = levelOneTierTwoBushes && at(hit.i, hit.j) === 2;
+        tree(px(fi), topY(hit.i, hit.j), px(fj), simple ? hgt * 0.62 : hgt, simple);
+      }
     }
     // Bushes ring the grove rather than filling it, softening the edge.
     for (let k = 0; k < BUSHES_PER_GROVE; k++) {

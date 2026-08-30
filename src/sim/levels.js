@@ -1,6 +1,6 @@
 // Hero TD -- level data.
 //
-// TDD section 3. A level is a 10x10 height array, an explicit list of ramp
+// TDD section 3. A level is a square height array, an explicit list of ramp
 // tile-pairs, and author-placed houses. Indexing is [j][i] -- row then column --
 // so the array as written reads like the island looks from above.
 //
@@ -41,37 +41,30 @@ export const LEVELS = {
     name: 'Level One',
 
     heights: [
-      [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-      [0, 0, 1, 1, 2, 2, 1, 1, 0, 0],
-      [0, 1, 1, 2, 2, 2, 2, 1, 1, 0],
-      [0, 1, 2, 2, 2, 2, 2, 2, 1, 0],
-      [1, 1, 2, 2, 2, 2, 2, 2, 1, 1],
-      [1, 2, 2, 2, 2, 2, 2, 1, 1, 1],
-      // (0,6) is land, and has to be. Without it the whole north-west shore --
-      // eleven tiles, and boats do land on them -- connects to the island only
-      // by cutting the diagonal (0,5)->(1,6), whose shoulder at (0,6) is open
-      // sea. board.isDiagonalStep stopped allowing that, for good reasons
-      // written up there, so the route has to be real ground instead.
-      [1, 1, 1, 2, 2, 2, 1, 1, 1, 0],
-      [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-      [0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-      [0, 0, 0, 1, 1, 1, 0, 0, 0, 0]
+      [0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 1, 1, 1, 0, 0, 0],
+      [0, 1, 1, 2, 2, 1, 1, 0],
+      [0, 1, 2, 2, 2, 2, 1, 0],
+      [0, 1, 2, 2, 2, 1, 1, 0],
+      [0, 1, 1, 2, 2, 1, 1, 0],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0]
     ],
 
     // [[lowI, lowJ], [highI, highJ]]. Both ends named explicitly: inferring a
     // ramp's direction from neighbour heights is ambiguous the moment it touches
     // two tiers at once. Validated at load; see board.js.
     ramps: [
-      [[4, 7], [4, 6]],
-      [[2, 6], [2, 5]]
+      [[3, 6], [3, 5]],
+      [[1, 4], [2, 4]]
     ],
 
-    houses: [[2, 3], [7, 5], [3, 8]],
+    houses: [[2, 3], [6, 4], [2, 6]],
 
     // Where a landing party comes ashore. P0 uses these as walker spawns; P1
     // replaces them with boat landing resolution (TDD 11) and keeps them only as
     // the authored fallback that guarantees a wave can never fail to spawn.
-    shoreFallback: [[3, 7], [4, 7], [5, 7], [4, 8], [5, 8]],
+    shoreFallback: [[1, 6], [3, 6], [4, 6], [3, 7], [4, 7]],
 
     // The arrival cutscene. `from` is in tile coordinates and deliberately off
     // the board; `land` is the beach it grounds against. A level without this
@@ -85,12 +78,12 @@ export const LEVELS = {
     // Reason about the projection, never about the compass -- "south-west"
     // written down is very nearly due LEFT once drawn.
     //
-    // He lands on the southern point at (4,9): the house at (3,8) sits up-left
+    // He lands on the southern point at (3,7): the house at (2,6) sits up-left
     // of him and the stairway up-right, which is the framing the arrival was
     // chosen for. About 4.5 tiles of sailing, for a short cutscene.
-    intro: { from: [2.3, 13.2], land: [4, 9] },
+    intro: { from: [1.3, 11.2], land: [3, 7] },
 
-    heroSpawn: [4, 4]
+    heroSpawn: [3, 3]
   },
 
   // ---------------------------------------------------------------------------

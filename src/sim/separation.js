@@ -113,8 +113,12 @@ export function createSeparation(board, structures) {
         const s = structures.at(i + di, j + dj);
         if (!s || !s.alive || seen.has(s.id)) continue;
         seen.add(s.id);
-        if (s.kind !== 'tower' || s.type === 'archer' || s.type === 'barricade') continue;
-        const half = config.hero.towerHitboxHalfExtent;
+        let half = null;
+        if (s.kind === 'house') half = config.hero.houseHitboxHalfExtent;
+        else if (s.kind === 'tower' && s.type !== 'archer' && s.type !== 'barricade') {
+          half = config.hero.towerHitboxHalfExtent;
+        }
+        if (half === null) continue;
         const dx = hero.x - s.x, dz = hero.z - s.z;
         const overlapX = half - Math.abs(dx);
         const overlapZ = half - Math.abs(dz);

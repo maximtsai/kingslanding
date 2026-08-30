@@ -89,20 +89,6 @@ export function createHero(world, flowHero) {
   function blockedForHero(i, j) {
     const blocker = world.structures.at(i, j);
     if (!blocker || !blocker.alive) return false;
-    // Match the hero flow field: houses reserve only their central footprint,
-    // leaving a narrow walkable margin around the outside for the king.
-    if (blocker.kind === 'house') {
-      const margin = 0.045;
-      const nearEdge = Math.abs(hero.x - blocker.x) > 0.5 - margin ||
-        Math.abs(hero.z - blocker.z) > 0.5 - margin;
-      if (nearEdge) return false;
-    }
-    if (blocker.kind === 'castle') {
-      const margin = 0.04;
-      const nearEdge = Math.abs(hero.x - blocker.x) > blocker.halfExtent - margin ||
-        Math.abs(hero.z - blocker.z) > blocker.halfExtent - margin;
-      if (nearEdge) return false;
-    }
     return !(blocker.kind === 'tower' && (blocker.type === 'archer' || blocker.type === 'barricade'));
   }
 
@@ -117,10 +103,34 @@ export function createHero(world, flowHero) {
     const field = flowHero.field('hero:' + i + ':' + j, [[i, j]], undefined);
     const originX = hero.cliffJump ? hero.cliffJump.toX : hero.x;
     const originZ = hero.cliffJump ? hero.cliffJump.toZ : hero.z;
-    if (!isFinite(field.get(Math.round(originX), Math.round(originZ)))) return false;
+    let originI = Math.round(originX), originJ = Math.round(originZ);
+    let escape = null;
+    const originBlocker = world.structures.at(originI, originJ);
+    if (originBlocker && blockedForHero(originI, originJ)) {
+      // The visible house is narrower than its tile, so the king may legitimately
+      // stand near its edge while rounding to the occupied cell. Start routing
+      // from the nearest reachable perimeter tile and walk there first; treating
+      // the occupied tile itself as open is what allowed paths through the house.
+      const candidates = [];
+      const span = originBlocker.span || 1;
+      for (let dj = -1; dj <= span; dj++) {
+        for (let di = -1; di <= span; di++) {
+          const ci = originBlocker.i + di, cj = originBlocker.j + dj;
+          if (di >= 0 && di < span && dj >= 0 && dj < span) continue;
+          if (!board.isLand(ci, cj) || blockedForHero(ci, cj)) continue;
+          if (!isFinite(field.get(ci, cj))) continue;
+          candidates.push({ i: ci, j: cj, d: Math.hypot(ci - originX, cj - originZ) });
+        }
+      }
+      candidates.sort((a, b) => a.d - b.d);
+      if (!candidates.length) return false;
+      originI = candidates[0].i; originJ = candidates[0].j;
+      escape = [originI, originJ];
+    }
+    if (!isFinite(field.get(originI, originJ))) return false;
     hero.field = field;
     hero.goal = { i, j, x: aimX, z: aimZ };
-    hero.waypoint = null;
+    hero.waypoint = escape;
     const dx = hero.goal.x - originX, dz = hero.goal.z - originZ;
     const span = Math.hypot(dx, dz) || 1;
     hero.pathDx = dx / span; hero.pathDz = dz / span;

@@ -79,6 +79,10 @@ export function createEnemies(world, flowGround, combat) {
       waypoint: null,
       waypointFrom: null,
       cooldown: 0,
+      // The blow in progress, or null: { t, target, landed }. Present only for
+      // specs that declare an attackWindup; everything else still deals its
+      // damage on the tick the cooldown expires.
+      swing: null,
       heroCooldown: 0,
       moving: false,
       footfall: 0,
@@ -186,10 +190,40 @@ export function createEnemies(world, flowGround, combat) {
     if (u.cooldown <= 0) fireAt(u, spec, u.target);
   }
 
+  // A swing already in the air. Advanced before the targeting below, and
+  // deliberately independent of it: once the arm is moving the blow lands (or
+  // whiffs) on its own schedule, whatever the unit decides to engage next. A
+  // windup that could be cancelled by a target dying would let a player dodge
+  // damage by killing something else, which is not a mechanic anyone asked for.
+  function stepSwing(u, spec, dt) {
+    const s = u.swing;
+    s.t += dt;
+    if (!s.landed && s.t >= spec.attackWindup) {
+      s.landed = true;
+      const target = s.target;
+      if (target && target.alive) {
+        if (target.isStructure && spec.molotov) {
+          // The throw. Damage rides the projectile rather than being applied
+          // here, so a building takes it when the bottle arrives.
+          combat.fire(muzzleOf(u), target, spec.damage, spec.molotov.speed,
+                      u, spec.molotov.trajectory, 0, 'molotov');
+        } else if (target.isStructure) {
+          world.damageStructure(target, spec.damage, u);
+          world.events.push({ type: 'meleeHit', unit: u });
+        } else {
+          world.damageUnit(target, spec.damage, u);
+          world.events.push({ type: 'meleeHit', unit: u });
+        }
+      }
+    }
+    if (s.t >= spec.attackWindup + spec.attackRecovery) u.swing = null;
+  }
+
   function step(u, dt) {
-    if (!u.alive) { u.moving = false; return; }
+    if (!u.alive) { u.moving = false; u.swing = null; return; }
 
     const spec = config.enemies[u.type];
+    if (u.swing) stepSwing(u, spec, dt);
     // Grunts cannot attack targets one full terrain tier above them. Keep this
     // separate from movement so they may still approach the higher ground, but
     // their melee strike is never applied across the elevation gap.
@@ -237,6 +271,12 @@ export function createEnemies(world, flowGround, combat) {
       if (u.cooldown <= 0) {
         if (spec.ranged) {
           fireAt(u, spec, engaged);
+        } else if (spec.attackWindup) {
+          // Begin the blow. The cooldown starts here rather than on the
+          // landing, so damage per second is unchanged.
+          u.cooldown = spec.attackInterval;
+          u.swing = { t: 0, target: engaged, landed: false };
+          world.events.push({ type: 'swingStart', unit: u });
         } else {
           u.cooldown = spec.attackInterval;
           // The engaged thing may be a building or the king.
@@ -319,7 +359,10 @@ export function createEnemies(world, flowGround, combat) {
     }
 
     // TDD 15: gait advances with distance travelled, never with wall-clock time.
-    u.gaitPhase = (u.gaitPhase + (travelled / config.anim.STRIDE) * Math.PI) % TAU;
+    // ENEMY_CADENCE multiplies the cycle rate without touching the distance, so
+    // the legs move faster while the unit does not.
+    u.gaitPhase = (u.gaitPhase +
+      (travelled / config.anim.STRIDE) * Math.PI * config.anim.ENEMY_CADENCE) % TAU;
     u.moving = travelled > 1e-6;
     const beat = Math.floor(u.gaitPhase / Math.PI);
     if (beat !== u.footfall) { u.footfall = beat; world.events.push({ type: 'footstep', unit: u }); }

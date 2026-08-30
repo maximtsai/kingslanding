@@ -31,11 +31,17 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   const kinds = new Map();          // key -> { mesh, count }
   const bars = new Map();           // structure id -> { bar, fill }
   const construction = new Map();   // structure id -> visual construction age
+  const repairPop = new Map();      // structure id -> repair bounce age
   const liveStructures = new Set();
 
   const barGeo = new THREE.PlaneGeometry(0.62, 0.075);
   const barBackMat = new THREE.MeshBasicMaterial({ color: 0x1b2226, transparent: true, opacity: 0.72, depthTest: false });
-  const barFillMat = new THREE.MeshBasicMaterial({ color: palette.accent, depthTest: false });
+  // GREEN, and only the castle wears one. Every other building reports its
+  // health by burning instead (see the flame pool below), which keeps the
+  // island free of floating gauges and leaves the one bar that is left meaning
+  // something: the objective is the only thing whose exact HP is worth a
+  // number's worth of screen space.
+  const barFillMat = new THREE.MeshBasicMaterial({ color: 0x49c96a, depthTest: false });
 
   const matrix = new THREE.Matrix4();
   const position = new THREE.Vector3();
@@ -132,6 +138,84 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   blobs.frustumCulled = false;
   blobs.count = 0;
   dynamicRoot.add(blobs);
+
+  // ---- damage as fire (TDD 15) ---------------------------------------------
+  //
+  // Buildings report their health by BURNING rather than by wearing a gauge.
+  // Square embers, in gameplay red, rising and shrinking; the more hurt the
+  // building, the more of them. It reads at a glance from any zoom, it needs no
+  // billboarded UI cluttering the island, and it is diegetic -- a burning house
+  // is information and set dressing at the same time.
+  //
+  // NO PER-EMBER STATE. Each ember is a pure function of (structure id, index,
+  // world clock), so nothing is allocated while a wave burns, nothing leaks when
+  // a building is destroyed mid-life, and the whole pool is one instanced draw.
+  // Pausing the world freezes them, because `world.time` stops.
+  //
+  // They shrink to nothing rather than fading out: this Three build cannot vary
+  // opacity per instance (the same instanceColor gap noted elsewhere), so scale
+  // is the only channel available and squares vanishing to a point suits the
+  // faceted look better than a soft fade would anyway.
+  const FLAME_CAP = 256;
+  const F = config.flames;
+  const flameMat = new THREE.MeshBasicMaterial({
+    color: 0xff3a17, transparent: true, opacity: 0.92, depthWrite: false
+  });
+  const flames = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), flameMat, FLAME_CAP);
+  flames.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  flames.frustumCulled = false;
+  flames.count = 0;
+  flames.renderOrder = 4;
+  dynamicRoot.add(flames);
+
+  const flamePos = new THREE.Vector3();
+  const flameScale = new THREE.Vector3();
+
+  // Deterministic per (id, index): the same ember always occupies the same spot
+  // on the same building, so a burning roof does not shimmer as the list order
+  // changes underneath it.
+  const hash = (id, k) => {
+    const v = Math.sin(id * 12.9898 + k * 78.233) * 43758.5453;
+    return v - Math.floor(v);
+  };
+
+  // Height the embers start at, per kind. Roughly the top of the thing, so they
+  // rise off the roof rather than out of the ground.
+  function emberBase(s) {
+    if (s.kind === 'house') return 0.62;
+    if (s.kind === 'castle') return 1.55;
+    return s.line === 'barricade' ? 0.35 : 1.05;
+  }
+
+  function emitFlames(s, wx, wz, baseY, damage, time, camera, start) {
+    const count = Math.round(damage * F.max);
+    let n = 0;
+    for (let k = 0; k < count && start + n < FLAME_CAP; k++) {
+      const a = hash(s.id, k), b = hash(s.id, k + 41), c = hash(s.id, k + 97);
+      // Each ember runs its own loop, offset so they do not pulse in unison.
+      const phase = (time * F.rate * (0.75 + 0.5 * c) + a) % 1;
+      const spread = s.kind === 'castle' ? 0.9 : 0.42;
+      flamePos.set(
+        wx + (a - 0.5) * spread + (b - 0.5) * 0.12 * phase,
+        baseY + emberBase(s) + phase * F.rise,
+        wz + (b - 0.5) * spread
+      );
+      // Hold full size for the first third of the rise, then shrink away.
+      //
+      // This was squared, which was a mistake worth remembering: a (1-p)^2 taper
+      // has an average value of a THIRD, so an ember nominally 0.115 across was
+      // typically drawn at 0.04 -- three pixels, which is not an indicator, it is
+      // grit on the lens. The shape of a taper decides the apparent size of the
+      // effect as much as the size constant does.
+      const shrink = Math.min(1, (1 - phase) * 1.5);
+      const size = F.size * (0.6 + 0.7 * c) * shrink;
+      flameScale.set(size, size, size);
+      matrix.compose(flamePos, camera.quaternion, flameScale);
+      flames.setMatrixAt(start + n, matrix);
+      n++;
+    }
+    return n;
+  }
 
   // Damage feedback stays as real objects: only a hurt structure shows one, so
   // this is a handful of draws at worst and they have to face the camera.
@@ -318,6 +402,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   function sync(world, camera, elapsed) {
     for (const entry of kinds.values()) entry.count = 0;
     let blobCount = 0;
+    let flameCount = 0;
     liveStructures.clear();
 
     // matrixWorldInverse is only refreshed inside renderer.render, which has not
@@ -343,6 +428,16 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       const wx = board.px(s.x), wz = board.px(s.z);
       const wy = board.topY(s.i, s.j) - config.board.SINK;
       let build = construction.get(s.id);
+      if (s.repaired) {
+        s.repaired = false;
+        repairPop.set(s.id, 0);
+        for (let k = 0; k < 5; k++) startDustPuff(s, wx, board.topY(s.i, s.j), 100 + k);
+      }
+      const repairAge = repairPop.has(s.id) ? repairPop.get(s.id) + (world.paused ? 0 : elapsed) : Infinity;
+      if (repairPop.has(s.id)) {
+        if (repairAge >= 0.48) repairPop.delete(s.id);
+        else repairPop.set(s.id, repairAge);
+      }
       if (!build) {
         const animate = s.kind !== 'house';
         build = { age: animate ? 0 : C.duration, dustSpawned: 0 };
@@ -372,8 +467,11 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       // towers a later tuning change rather than a refactor.
       euler.set(shakeTiltX, s.kind === 'tower' ? s.rotation : 0, shakeTiltZ);
       quaternion.setFromEuler(euler);
-      position.set(wx + shakeX, wy - riseDepth * (1 - rise), wz + shakeZ);
-      structureScale.set(0.94 + rise * 0.06, 1, 0.94 + rise * 0.06);
+      const pop = repairPop.has(s.id) ? repairPop.get(s.id) : Infinity;
+      const popT = pop === Infinity ? 0 : Math.min(1, pop / 0.48);
+      const popHeight = pop === Infinity ? 0 : Math.sin(Math.PI * popT) * 0.16;
+      position.set(wx + shakeX, wy - riseDepth * (1 - rise) + popHeight, wz + shakeZ);
+      structureScale.set(0.94 + rise * 0.06, 1 + (pop === Infinity ? 0 : Math.sin(Math.PI * popT) * 0.12), 0.94 + rise * 0.06);
       matrix.compose(position, quaternion, structureScale);
 
       // TDD 15. Houses and the castle occlude just as readily as a tower does,
@@ -416,8 +514,16 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
         blobs.setMatrixAt(blobCount++, matrix);
       }
 
-      // Only bother with a bar on something that has actually been hurt.
-      const hurt = s.alive && progress >= 1 && s.hp < s.maxHp;
+      // Fire scales with how hurt the building is, and only a finished one
+      // burns: a tower still going up has no health to have lost.
+      if (s.alive && progress >= 1 && s.hp < s.maxHp) {
+        const damage = Math.min(1, 1 - s.hp / s.maxHp);
+        flameCount += emitFlames(s, wx, wz, board.topY(s.i, s.j),
+                                 damage, world.time, camera, flameCount);
+      }
+
+      // Only the castle keeps a bar, and only once it has actually been hurt.
+      const hurt = s.kind === 'castle' && s.alive && progress >= 1 && s.hp < s.maxHp;
       const view = hurt ? barFor(s) : bars.get(s.id);
       if (view) {
         view.bar.visible = hurt;
@@ -440,6 +546,8 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
     }
     blobs.count = blobCount;
     if (blobCount) blobs.instanceMatrix.needsUpdate = true;
+    flames.count = flameCount;
+    if (flameCount) flames.instanceMatrix.needsUpdate = true;
     updateDust(world.paused ? 0 : elapsed);
 
     // A removed structure (sold, or wiped by a restart) leaves the instance
@@ -812,8 +920,28 @@ export function createProjectileView(THREE, board, dynamicRoot) {
   const shaftMaterial = arrowMaterial;
   const shaft = new THREE.InstancedMesh(shaftGeometry, shaftMaterial, CAP);
 
+  // Molotovs, thrown at buildings. A chunky lit bottle rather than a line: it
+  // has to read as a distinct object in the air, because an arrow arcing into a
+  // house and a bottle arcing into a house mean different things to a player
+  // deciding whether to intervene.
+  //
+  // MeshBasicMaterial takes no light, so a saturated red is genuinely emissive
+  // against the scene rather than a red that the sun has to agree to -- which
+  // is the whole of "glowing" at this art level. A second, larger, dimmer shell
+  // around it does the halo.
+  const bottleGeometry = new THREE.BoxGeometry(0.075, 0.11, 0.075);
+  const bottle = new THREE.InstancedMesh(
+    bottleGeometry, new THREE.MeshBasicMaterial({ color: 0xff5a22 }), CAP);
+  const haloGeometry = new THREE.BoxGeometry(0.15, 0.19, 0.15);
+  const halo = new THREE.InstancedMesh(
+    haloGeometry,
+    new THREE.MeshBasicMaterial({
+      color: 0xff2a08, transparent: true, opacity: 0.38, depthWrite: false
+    }), CAP);
+
   const meshes = [shaft];
-  for (const mesh of meshes) {
+  const flameMeshes = [bottle, halo];
+  for (const mesh of [...meshes, ...flameMeshes]) {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false;
     mesh.count = 0;
@@ -849,11 +977,26 @@ export function createProjectileView(THREE, board, dynamicRoot) {
 
   function sync(world, alpha) {
     let count = 0;
+    let lit = 0;
     for (const p of world.combat.projectiles) {
       if (count >= CAP) break;
       const x = p.px + (p.x - p.px) * alpha;
       const z = p.pz + (p.z - p.pz) * alpha;
       const y = p.py + (p.y - p.py) * alpha;
+
+      if (p.kind === 'molotov') {
+        if (lit >= CAP) continue;
+        // Tumbling, on a clock rather than on its own velocity: a bottle end
+        // over end is the read, and the exact rate is not worth a state field.
+        const spin = (world.time + p.id) * 9;
+        euler.set(spin, spin * 0.6, 0, 'YXZ');
+        quaternion.setFromEuler(euler);
+        position.set(board.px(x), y, board.px(z));
+        matrix.compose(position, quaternion, one);
+        for (const mesh of flameMeshes) mesh.setMatrixAt(lit, matrix);
+        lit++;
+        continue;
+      }
       // Embedded and grounded arrows quickly settle to half size instead of
       // remaining full-length in the target or terrain.
       const impactScale = p.state === 'grounded' || p.state === 'embedded' ? 0.5 : 1;
@@ -873,6 +1016,10 @@ export function createProjectileView(THREE, board, dynamicRoot) {
     for (const mesh of meshes) {
       mesh.count = count;
       if (count) mesh.instanceMatrix.needsUpdate = true;
+    }
+    for (const mesh of flameMeshes) {
+      mesh.count = lit;
+      if (lit) mesh.instanceMatrix.needsUpdate = true;
     }
 
     let rippleCount = 0;
@@ -1183,7 +1330,10 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
       shoulder.rotation.y = 0;
       shoulder.rotation.z = 0;
     }
-    applyGait(rig.joints, gait, speed01, world.time * A.IDLE_RATE);
+    // The king keeps the original walk. He has no knees, so the raiders' run
+    // profile would give him a wider straight-leg scissor and nothing to break
+    // it up with.
+    applyGait(rig.joints, gait, speed01, world.time * A.IDLE_RATE, A.stride);
     rig.joints.bob.rotation.z *= 0.5;
     if (hero.jumpPhase) applyCliffPose(hero.jumpPhase, hero.jumpT);
     else applyAttackPose(hero, facing);
@@ -1275,7 +1425,9 @@ export function createGhostView(THREE, board, dynamicRoot) {
     // `span` is the footprint being previewed: 1 for a tower, 2 for the castle.
     show(i, j, valid, probe, span) {
       const size = span || 1;
-      const y = board.topY(i, j) + 0.025;
+      // Water tiles are pickable now (so the "can't place on water" rejection
+      // can fire), but their topY sits below the sea; surface the ghost on it.
+      const y = Math.max(board.topY(i, j) + 0.025, 0.032);
       markerGroup.visible = true;
       // Anchored at (i, j), so a 2x2 preview covers the tiles it would occupy.
       markerGroup.position.set(board.px(i + (size - 1) / 2), y + 0.006, board.px(j + (size - 1) / 2));

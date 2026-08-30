@@ -172,7 +172,7 @@ export const config = {
     // ============================ ARCHER LINE ============================
     archer: {
       name: 'Archer Tower', line: 'archer', tier: 1,
-      cost: 20, hp: 100,
+      cost: 15, hp: 100,
       range: 3.0, minRange: 0.5,
       damage: 9, arrowsPerVolley: 2, fireInterval: 1.15,
       arrowSpeed: 8.5, trajectory: 'arc',
@@ -264,7 +264,7 @@ export const config = {
     // it is always affordable.
     barricade: {
       name: 'Barricade', line: 'barricade', tier: 1, shape: 'wide',
-      cost: 15, hp: 150,
+      cost: 10, hp: 150,
       damage: 0, buildTime: 1.5,
       upgradesTo: ['bulwark', 'spearBunker']
     },
@@ -325,6 +325,27 @@ export const config = {
       speed: 1.0,
       damage: 7,
       attackInterval: 0.9,
+
+      // ---- the swing (TDD 10) ----
+      // Damage no longer lands on the tick the cooldown expires. The blow is
+      // wound up first and connects partway through, which is what lets the
+      // animation carry weight: a hit that arrives before the arm has moved is
+      // the reason instant melee reads as nothing happening.
+      //
+      // The cooldown still starts at the WINDUP, not at the landing, so the
+      // rate of damage over time is unchanged -- only its phase moves, by one
+      // windup, once, at the start of an engagement.
+      attackWindup: 0.20,       // s, raise before the blow connects
+      attackRecovery: 0.34,     // s, follow-through after it
+
+      // Against BUILDINGS a grunt throws instead of swinging. Same cooldown,
+      // same damage, same reach -- the range is deliberately NOT extended, since
+      // letting grunts hit walls from further away would change how every
+      // chokepoint on every level plays. This is presentation, not balance.
+      molotov: {
+        speed: 5.5,
+        trajectory: 'arc'
+      },
       // Reach to a structure's EDGE, not its centre. A 2x2 castle has no useful
       // centre distance for a melee attacker, and edge distance makes one number
       // work for every footprint.
@@ -485,6 +506,17 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     recoil: 0.10,              // tiles, along the incoming direction
     heroSwell: 0.14,           // the king is bigger; the same bump reads louder
     heroSeconds: 0.20
+  },
+
+  // ---- damage as fire (TDD 15) ----
+  // Buildings report their health by burning instead of by wearing a gauge.
+  // Ember count scales with damage taken, so a glance across the island says
+  // which side of it is losing without reading a single number.
+  flames: {
+    max: 8,        // embers on a building at the point of collapse
+    rate: 0.95,    // rise cycles per second, per ember, before its own jitter
+    rise: 0.62,    // world units travelled over one cycle
+    size: 0.20     // world units, the square at full size
   },
 
   // ---- the arrival cutscene (level one only) ----
@@ -675,6 +707,14 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
                       duration: 0.14, gain: 0.22, cap: 3 },
       burningRock:  { kind: 'thump', bus: 'sfx', freq: 140, to: 55,
                       duration: 0.16, gain: 0.24, cap: 3 },
+      // A bottle leaving a hand: a short rising hiss, not the bowstring the
+      // generic `shot` event would otherwise have given it.
+      molotov:      { kind: 'noise', bus: 'sfx', freq: 240, sweepTo: 880,
+                      duration: 0.22, gain: 0.13, cap: 3 },
+      // The grunt's blade starting its arc. Quiet and low -- it is the tell that
+      // a blow is coming, so it must not compete with the blow landing.
+      swing:        { kind: 'noise', bus: 'sfx', freq: 520, sweepTo: 170,
+                      duration: 0.11, gain: 0.055, cap: 4 },
       splash:       { kind: 'thump', bus: 'sfx', freq: 110, to: 34,
                       duration: 0.30, gain: 0.42, cap: 2 },
       unitDied:     { kind: 'noise', bus: 'sfx', freq: 700, sweepTo: 180,
@@ -800,10 +840,28 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
       // what makes TDD 12's "exactly one T3 by the final wave" a decision
       // instead of an accident.
       one: [
-        // Two groups of four grunts, each carried by its own boat.
+        // 8 -- two boats of four grunts.
         { goldDropChance: 0.6,
           boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
-                  { delay: 2, units: ['grunt', 'grunt', 'grunt', 'grunt'] }] }
+                  { delay: 2, units: ['grunt', 'grunt', 'grunt', 'grunt'] }] },
+        // 12 -- three boats of four grunts.
+        { goldDropChance: 0.6,
+          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 1.5, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 3, units: ['grunt', 'grunt', 'grunt', 'grunt'] }] },
+        // 16 -- four boats of four grunts.
+        { goldDropChance: 0.55,
+          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 1.5, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 3, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 4.5, units: ['grunt', 'grunt', 'grunt', 'grunt'] }] },
+        // 20 -- five boats of four grunts.
+        { goldDropChance: 0.5,
+          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 1.5, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 3, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 4.5, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 6, units: ['grunt', 'grunt', 'grunt', 'grunt'] }] }
       ],
 
       // ---- TWO: Twin Capes. The capes are north and south. ----------------
@@ -917,12 +975,61 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
   // wall-clock time, so a slowed unit does not moon-walk.
   anim: {
     STRIDE: 0.42,            // tiles per half-cycle; sets cadence against speed
-    LEG_SWING: 0.50,         // rad, peak, about the hip
-    ARM_RATIO: 0.60,         // arm swing as a fraction of leg swing
+
+    // Enemy legs cycle three times faster than the distance they cover would
+    // imply. Presentation only: it does not move them any quicker, and the hero
+    // has his own equivalent in hero.walkAnimRate. It makes a wave read as
+    // scrambling up the beach rather than marching.
+    //
+    // Footfall events are derived from gait phase, so this trebles them too:
+    // a grunt goes from 2.4 to 7.1 footfalls a second, and forty ashore from
+    // roughly 95 to 285 triggers a second. That is deliberate -- the sound has
+    // to land on the foot you can see -- and it is already absorbed: the
+    // footstep voice is capped at 3 with a 0.05s duration, so no more than
+    // about sixty a second can ever be sounding and the rest are dropped
+    // quietly by claim(). It was designed as texture rather than as an event,
+    // for exactly this reason. Nothing clips; the texture simply saturates.
+    ENEMY_CADENCE: 3,
+
+    // Render-only lift, in world units, applied to every enemy root. They sit
+    // slightly proud of the ground rather than bedded into it, which reads
+    // better against a contact blob that stays put on the floor. The blob does
+    // NOT move with this -- a shadow under a lifted figure is the point.
+    ENEMY_LIFT: 0.02,
     SPEAR_DAMP: 0.45,        // the weapon arm swings less, or the spear windmills
-    BOUNCE: 0.020,           // vertical, at 2x stride frequency: one rise per footfall
-    SWAY: 0.060,             // rad, roll into the planted leg
-    YAW: 0.040,              // rad, torso counter-rotation against the arms
+
+    // ---- gait profiles ----
+    // Two, because the king and the raiders are doing different things and one
+    // of them has no knees. The animator takes a profile rather than reading
+    // these directly, so neither can drift into the other by accident.
+    //
+    // `stride` is the king: unchanged, and deliberately so. He is a knee-less
+    // rig, and the exaggerated leg swing below would only scissor a straight
+    // leg further -- which is precisely the mannequin-sliding look the raiders'
+    // knees exist to break.
+    stride: {
+      LEG_SWING: 0.50,       // rad, peak, about the hip
+      KNEE_FLEX: 0,          // no knee joints on this rig
+      ARM_RATIO: 0.60,       // arm swing as a fraction of leg swing
+      BOUNCE: 0.020,         // vertical, at 2x stride frequency: one per footfall
+      LEAN: 0,               // he strides; he does not charge
+      SWAY: 0.060,           // rad, roll into the planted leg
+      YAW: 0.040             // rad, torso counter-rotation against the arms
+    },
+
+    // `run` is the raiders. A RUN, not a walk, and deliberately past what a real
+    // body does: they are read at twenty-odd pixels from a high angle, where a
+    // truthful gait is indistinguishable from standing still and sliding. The
+    // exaggeration is what makes a wave look like it is charging.
+    run: {
+      LEG_SWING: 0.72,
+      KNEE_FLEX: 0.75,       // rad of extra bend at the top of the recovery swing
+      ARM_RATIO: 0.75,
+      BOUNCE: 0.055,         // peak-to-peak vertical, centred: see applyGait
+      LEAN: 0.16,            // rad, torso pitched into the run at reference speed
+      SWAY: 0.085,
+      YAW: 0.055
+    },
     TURN_RATE: 7.0,          // rad/s, damped approach so units bank into turns
     IDLE_RATE: 1.35,         // rad/s breathing clock, independent of the gait
     IDLE_SCALE: 0.15,        // TDD: idle is the same rig at ~15%

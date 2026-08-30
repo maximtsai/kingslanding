@@ -44,10 +44,13 @@ export function createPicker(THREE, board, camera) {
       const x = toTile(wx), z = toTile(wz);
       const i = Math.round(x), j = Math.round(z);
       if (i < 0 || j < 0 || i >= board.N || j >= board.N) continue;
-      if (!board.isLand(i, j)) continue;
 
-      // topY is the walkable surface; SINK is where props are seated on it.
-      if (wy <= board.topY(i, j) - config.board.SINK) {
+      // Land rides the walkable surface; water rides the plane at y = 0. Water
+      // taps matter once something is armed -- "can't place on water" is the
+      // most common rejection, and a tap that returns nothing has no way to say
+      // that.
+      const surface = board.at(i, j) > 0 ? board.topY(i, j) - config.board.SINK : 0;
+      if (wy <= surface) {
         return { i, j, x, z };
       }
     }

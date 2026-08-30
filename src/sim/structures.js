@@ -153,24 +153,28 @@ export function createStructures(board, flow) {
     }, spec.footprint);
   }
 
+  // Placement predicates answer WHY, not just yes/no: the HUD turns the code
+  // into a brief on-screen reason ("CAN'T PLACE ON CLIFF"). null means the spot
+  // is legal. Codes are sim vocabulary; screen text belongs to the presentation.
+  //
   // All four tiles must be land, empty, non-ramp, and on the SAME elevation --
   // a castle straddling a tier would have no coherent floor.
   //
   // The reachability clause is the one that matters: at least one non-castle land
   // tile has to touch the footprint, or the player has placed an objective the
   // raiders can never walk up to and the wave could never end.
-  function canPlaceCastle(i, j) {
+  function castleReason(i, j) {
     const span = config.castle.footprint;
     const height = board.at(i, j);
-    if (!height) return false;
+    if (!height) return 'water';
     for (let dj = 0; dj < span; dj++) {
       for (let di = 0; di < span; di++) {
         const ci = i + di, cj = j + dj;
-        if (!board.isLand(ci, cj)) return false;
-        if (board.at(ci, cj) !== height) return false;   // no straddling tiers
-        if (board.isRamp(ci, cj)) return false;
-        if (reserved.has(cj * N + ci)) return false;
-        if (occupant[index(ci, cj)]) return false;
+        if (!board.isLand(ci, cj)) return 'water';
+        if (board.at(ci, cj) !== height) return 'cliff';   // no straddling tiers
+        if (board.isRamp(ci, cj)) return 'stairs';
+        if (reserved.has(cj * N + ci)) return 'obstruction';
+        if (occupant[index(ci, cj)]) return 'occupied';
       }
     }
     // At least one reachable neighbour outside the footprint.
@@ -180,10 +184,22 @@ export function createStructures(board, flow) {
         const ci = i + di, cj = j + dj;
         if (inside(ci, cj) || !board.isLand(ci, cj)) continue;
         if (occupant[index(ci, cj)]) continue;
-        return true;
+        return null;
       }
     }
-    return false;
+    return 'nopath';
+  }
+
+  function canPlaceCastle(i, j) { return castleReason(i, j) === null; }
+
+  // TDD 7: a tower may only go where the tile is land and unoccupied. Never
+  // ramps, water, or reserved decor.
+  function placeReason(i, j) {
+    if (!board.isLand(i, j)) return 'water';
+    if (board.isRamp(i, j)) return 'stairs';
+    if (reserved.has(j * N + i)) return 'obstruction';
+    if (occupant[index(i, j)]) return 'occupied';
+    return null;
   }
 
   // TDD 7: takedown refunds 50% of total invested, not of base cost. Build-phase
@@ -198,16 +214,13 @@ export function createStructures(board, flow) {
   return {
     list,
     at: (i, j) => (i < 0 || j < 0 || i >= N || j >= N) ? null : occupant[index(i, j)],
-    house, tower, castle, upgrade, destroy, sell, cells, edgeDistance, canPlaceCastle,
+    house, tower, castle, upgrade, destroy, sell, cells, edgeDistance,
+    canPlaceCastle, canPlaceCastleReason: castleReason,
 
     // TDD 7: placement only where the tile is land and unoccupied. Never ramps,
     // water, or shore.
-    canPlace(i, j) {
-      if (!board.isLand(i, j)) return false;
-      if (board.isRamp(i, j)) return false;
-      if (reserved.has(j * N + i)) return false;
-      return !this.at(i, j);
-    },
+    canPlace: (i, j) => placeReason(i, j) === null,
+    canPlaceReason: placeReason,
 
     towers: () => list.filter(s => s.kind === 'tower' && s.alive),
     houses: () => list.filter(s => s.kind === 'house' && s.alive),
@@ -241,6 +254,7 @@ export function createStructures(board, flow) {
         if (s.kind === 'castle') continue;
         if (!s.alive && cells(s).every(([ci, cj]) => !occupant[index(ci, cj)])) {
           s.alive = true;
+          s.repaired = true;
           for (const [ci, cj] of cells(s)) occupant[index(ci, cj)] = s;
         }
         s.building = 0;

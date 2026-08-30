@@ -97,6 +97,290 @@ exactly, and the four that move are inside a ramp corridor, which is the one
 place a walker is legitimately between two tiers. Across 49,445 unit-frames of
 real waves the worst deviation from the remembered tier was 0.0000.
 
+### Enemies are long-bodied, short-legged and braced
+
+All three enemy types share a proportion that is deliberately **not human**:
+a tall torso over stumpy legs, with a fixed knee bend and an outward thigh splay.
+Two reasons. The game is watched from a high angle, where legs are mostly hidden
+behind the body and the torso does nearly all the silhouette work -- so length
+spent on the torso is length that shows. And a braced, slightly crouched stance
+reads as men who expect to be hit, which is what separates a raider from a
+pedestrian at a glance.
+
+The legs are two segments -- `hip -> thigh -> knee -> shin` -- and both the knee
+bend and the thigh splay live on their **own groups**, not on the hip. This is
+the third time that rule has had to be applied (the torso stoop and the sword
+counter-pitch were the others): `applyGait` and `applyDeathPose` assign
+`hips[k].rotation` *absolutely*, so any stance stored on the hip is erased on the
+first animated frame. **Anything static that must survive animation needs a group
+of its own between the animated joint and the mesh.**
+
+`hipY` for each type is `(thigh + shin * cos(kneeBend)) * cos(splay)` -- the
+height a bent, splayed leg actually reaches, so the feet land exactly on the
+ground. Verified to within 0.0004 world units for all three types. **Change
+either angle and every `hipY` has to be recomputed**; there is nothing at
+runtime that will catch it, the figures will simply hover or sink.
+
+The thigh is deliberately *not* tilted forward to put the foot back under the
+hip. It would cost another group, and `LEG_SWING` is 0.50 rad peak, so a base
+tilt of any useful size makes the walk permanently lead with one direction.
+Bending at the knee alone leaves the foot ~0.017 behind the hip, which is under a
+centimetre at world scale.
+
+Cost: one leg mesh became two, so +2 InstancedMeshes per type, +6 overall.
+
+### The raiders run; the king strides
+
+`applyGait` takes a **profile** rather than reading the tuning constants
+directly, and there are two: `anim.run` for enemies and `anim.stride` for the
+king. They exist because the two rigs are not the same shape -- the king has no
+knees, and the raiders' wider leg swing on a knee-less rig would only scissor a
+straight leg further, which is exactly the mannequin-sliding look the knees were
+added to break. Passing a profile rather than branching inside the animator
+means neither can drift into the other by accident.
+
+The run profile is deliberately past what a real body does. Raiders are read at
+twenty-odd pixels from a high angle, where a truthful gait is indistinguishable
+from standing still and sliding.
+
+**Knees are what make it a run.** Flexion is added only over the recovery half of
+the cycle -- the trailing-to-leading transit -- and peaks as the leg passes under
+the body. For leg 0 that transit runs `gait` pi/2 to 3pi/2, whose midpoint is
+where `cos(gait) = -1`, so `max(0, -cos(gait))` is exactly the window and exactly
+the shape; leg 1 is the same window half a cycle away. Clamping at zero leaves
+the stance half rigid, which is what a leg carrying weight does. Verified: at
+each crossing one leg is fully folded and the other fully straight, and at full
+split neither is.
+
+**Two bugs in the bounce, both found on paper rather than on screen.**
+
+1. *Wrong phase.* It was `(1 - cos(2 * gait))`, which peaks at full leg split --
+   when the legs are most angled and the hips are at their **lowest**. It lifted
+   the body at precisely the moment it should have dropped. `cos(2 * gait)` peaks
+   at the passing positions, where the support leg is straight and vertical.
+2. *Wrong offset.* There is **no foot IK** in this rig: a foot's height is
+   whatever the hip and the leg pose put it at, so raising the body raises the
+   feet with it. Simply correcting the phase to an all-positive `(1 + cos)` lifted
+   the whole figure off the ground exactly when its support leg was longest --
+   measured at 0.0096 world units, about 0.7 of a screen pixel, and it never
+   planted at any point in the cycle. Centring the oscillation on zero drops the
+   split phase by as much as it raises the passing phase, bringing the lowest
+   foot to -0.001 (planted) while keeping the corrected phase. It costs nothing
+   at rest because the term is scaled by `speed01`.
+
+Measured foot contact over a full cycle after the fix: grunt -0.0010, archer
++0.0001, brute +0.0034 world units, against peak foot lifts of 0.033 to 0.062.
+
+**The general rule this is the third instance of:** every static pose that must
+survive animation needs its own group between the animated joint and the mesh
+(torso stoop, knee bend, thigh splay), and every *runtime* offset that must not
+disturb the idle pose needs scaling by `speed01`. `applyGait` writes joint
+rotations absolutely; nothing it touches can hold a resting value.
+
+**Cadence is decoupled from speed.** `anim.ENEMY_CADENCE` multiplies the rate the
+gait phase advances without touching the distance covered, so raiders' legs cycle
+three times faster than their movement implies -- scrambling up a beach rather
+than marching. The hero has the same lever in `hero.walkAnimRate`; gait still
+advances with distance travelled and never with wall-clock time, so the trick
+survives frame-rate changes and pausing.
+
+The knock-on is audio, and it turned out to be already handled. Footfall events
+come off gait phase, so a grunt went from 2.4 to 7.1 footfalls a second and forty
+ashore from roughly 95 to 285 triggers a second. The footstep voice is capped at
+3 with a 0.05s duration, so at most about sixty a second can ever sound and the
+rest are dropped quietly by `claim()`. Section 19 authored it as *texture, not an
+event* for precisely this reason, and that decision paid for a change made long
+afterwards.
+
+**Enemies sit slightly proud of the ground** (`anim.ENEMY_LIFT`, applied to the
+render root only). The contact blob deliberately does **not** move with it -- a
+shadow that stays on the floor under a lifted figure is the whole effect. Feet
+now bottom out 0.7 to 1.1 screen pixels above the ground rather than planting,
+which is intentional here and not the accidental float described above; the
+difference is that this one is a named constant rather than a side effect of a
+phase error.
+
+Measured, at play size: body bob 2.1 to 2.5 pixels peak-to-peak (up from 1.3 to
+1.5), peak foot lift 0.057 to 0.086 world units.
+
+### Enemy silhouettes are provisional where they are shared
+
+`TYPES.knight` is an explicit alias of the grunt. `build` and `scaleOf` already
+fall back to the grunt for any unrecognised type, so the alias changes nothing
+today -- it exists to record that the sameness is deliberate and temporary, and
+to be the single line replaced when the knight earns its own shape.
+
+**No `knight` exists anywhere else in the project yet** -- not in
+`config.enemies`, not in any wave table. The alias is forward-looking only.
+
+One thing to fix at that point: `units.js` caches an instancing kit per **type
+string**, so two types sharing geometry still allocate two full sets of
+`InstancedMesh`es. A knight shipping before it has a distinct model would double
+its draw calls for no visual difference.
+
+### A black face under a silver helm
+
+Every enemy has the same head: a **sphere in pure black** under a **light silver
+spectacle helm** of the Gjermundbu type -- a domed skullcap with an ocular guard
+hung below its rim, two eye openings and a nasal between them.
+
+The face is pure `#000000`, not a dark grey. It takes no light at all, so it
+stays a void from every angle instead of lightening as a unit turns -- which is
+what makes the eye openings read as *holes* rather than as dark paint. The holes
+are real: the ocular guard is an extruded shape with two circles punched through
+it, and what shows through them is the black ball behind.
+
+Geometry verified rather than eyeballed, at a nominal head diameter of 1.0:
+
+| point | clear of the dome? | proud of the face? |
+|---|---|---|
+| eye centre | yes, below the rim | +0.019 |
+| eye bottom | yes | +0.007 |
+| eye top | overlapped by the rim, top 7% | +0.046 |
+| nasal tip | yes | +0.012 |
+| plate top edge | tucked behind the dome | +0.025 |
+
+The dome rim overhanging the top sliver of each opening is wanted, not a defect:
+it is the brow. Nothing is buried in the head, and the guard's outer corners
+flare past the dome by 0.118 of a head diameter -- under a pixel at play size,
+and roughly what a real spectacle guard does at the cheekbones.
+
+**Two things had to move when the box became a ball.** A box sitting flush on the
+body top is a clean butt joint; a sphere touching a flat top meets it at a single
+tangent point and leaves a notch of daylight all the way round the neck -- so
+every head is now sunk about 0.15 of its diameter into the shoulders. And the
+grunt's head was enlarged from 0.105 to 0.122: that number was chosen for a small
+box under a *wide overhanging box helmet*, and with the overhang gone it left a
+pin head on a very wide body.
+
+**Three consequences worth deciding on, none of them settled here:**
+
+1. **Enemies are no longer near-black**, which is what this document says they
+   are. The helm is the brightest thing on the figure. The silver is a hair warm
+   of neutral rather than the cold blue-grey a helmet wants to be, which keeps it
+   on the gameplay side of the warm/cool split -- but the "near-black enemies"
+   line above is now describing the *body* only.
+2. **The shield boss lost its job, and the shield went with it.** The boss was
+   introduced as "one bright speck on an otherwise near-black figure", the mark
+   that identified a grunt at twenty pixels; the helm took that role, leaving two
+   draw calls paying for a mark that no longer marked anything. Both are gone
+   (`shield: 0` -- the build path is intact and a radius brings them back).
+   Grunt/archer/brute separation now rests entirely on body width, the bow, and
+   size.
+3. **The brute has lost its bare head**, which was its stated silhouette cue. It
+   is still half again the size of the others, which was always the stronger half
+   of that read.
+
+Cost: +4 InstancedMeshes overall (head, dome and guard is three meshes where the
+grunt and archer had two and the brute had one).
+
+### The grunt winds up, and throws fire at buildings
+
+**Damage no longer lands on the tick the cooldown expires.** A grunt's blow is
+wound up first (`attackWindup`) and connects partway through, then follows
+through (`attackRecovery`). A hit that arrives before the arm has moved is the
+reason instant melee reads as nothing happening.
+
+**The cooldown still starts at the windup, not at the landing**, so damage per
+second is unchanged -- only its phase moves, by one windup, once, at the start of
+an engagement. Measured: swings start every 0.90s against a configured
+`attackInterval` of 0.90.
+
+The swing runs on its own clock once started, deliberately independent of
+targeting. A windup that could be cancelled by its target dying would let a
+player dodge damage by killing something else, which is not a mechanic anyone
+asked for; instead the blow completes and whiffs.
+
+**Against a BUILDING the grunt throws a molotov instead of swinging.** Same
+cooldown, same damage, same reach -- *the range is deliberately not extended*.
+Letting grunts hit walls from further away would change how every chokepoint on
+every level plays; this is presentation, not balance. Damage rides the projectile,
+so a building takes it when the bottle arrives (a minimum 0.18s flight even at
+contact range, which `leadTarget` already guaranteed).
+
+A molotov is spliced on impact rather than embedding. Arrows earn an afterlife --
+they stick in the target, plant in the ground, or overtravel -- but a bottle is
+glass and burning rag, and leaving one lodged in a wall as a glowing box was the
+one way this could have looked broken. It was, until it was caught.
+
+Since these units have no arm meshes, the swing is carried by three things that
+are visible: the weapon on its shoulder pivot, the torso twisting against it, and
+the whole body lunging into the blow. The pose reads the simulation's swing
+clock, so the animation and the damage cannot drift apart.
+
+### Buildings burn instead of wearing a gauge
+
+**Only the castle keeps a health bar, and it is green.** Everything else reports
+its health by burning: square embers in gameplay red, rising and shrinking, more
+of them the more hurt the building. It reads at a glance from any zoom, needs no
+billboarded UI cluttering the island, and is diegetic -- a burning house is
+information and set dressing at once. The one bar that survives means something
+precisely because it is the only one: the objective is the only thing whose exact
+HP is worth that much screen space.
+
+**No per-ember state.** Each ember is a pure function of (structure id, index,
+world clock), so nothing is allocated while a wave burns, nothing leaks when a
+building dies mid-life, and the whole pool is one instanced draw. Pausing freezes
+them, because `world.time` stops.
+
+They shrink to nothing rather than fading, because this Three build cannot vary
+opacity per instance -- the same `instanceColor` gap noted elsewhere. Scale is
+the only channel available, and squares vanishing to a point suits the faceted
+look better than a soft fade anyway.
+
+**The taper shape decides the apparent size of the effect as much as the size
+constant does.** The first version tapered as `(1 - p)^2`, whose average value is
+a THIRD: embers nominally 0.115 across were typically drawn at 0.04, about three
+pixels -- not an indicator, grit on the lens. Holding full size for the first
+third and then shrinking linearly fixed it, and the size constant went up
+alongside.
+
+Verified: four buildings staged at 25/45/55/75% damage produced exactly
+`round(damage x max)` embers each, one visible bar, fill colour `#49c96a`. A full
+wave peaked at 17 embers and held 60fps.
+
+### Armless, and the legs are drawn longer than they are
+
+**Enemies have no arm meshes.** The shoulder pivots remain, so the animator still
+swings them and the weapon parented to the right-hand one still swings and still
+damps -- a raider carries a floating sword, bow or club with nothing joining it
+to the body. That is the intent, not an artefact: without an arm there is no hand
+for a weapon to sit in, so it hangs where the hand would have been.
+
+It is a flag (`SHOW_ARMS`), not a deletion, and `arm`/`armCant` stay in every
+type. Arms return by flipping one boolean.
+
+**The grunt's leg meshes are drawn longer than the segments they represent.** The
+thigh keeps its top at the hip and reaches *down* past the knee; the shin keeps
+its base at the foot and reaches *up* past the knee. They grow toward each other
+and overlap, which fills the wedge of daylight a bent knee opens on its outside
+edge, and reads as fuller, longer legs.
+
+**Nothing about the skeleton moves.** `legOverlap` is consumed only by
+`bevelBox` dimensions; the hip, the knee and the foot are placed from the
+unchanged segment lengths, so the gait, the foot contact and every `hipY`
+derivation are untouched by construction rather than by luck. Verified: drawn
+leg 0.141 against a 0.119 skeleton, and hip-to-foot reach still 0.11587 against
+a `hipY` of 0.116.
+
+The one thing that could have gone wrong does not: the shin's extension rotates
+with the knee, so at peak run flexion its top corner swings 0.0095 behind the
+joint against a thigh half-depth of 0.0415 -- comfortably inside, no poke-through
+at any point in the cycle.
+
+**These three changes together cut the enemy rigs from 42 InstancedMeshes to 34**
+(-6 arms, -2 shield and boss), which is a third of the way back from everything
+the helm, the knees and the pauldrons added.
+
+### Raiders are warm-dark, not blue-dark
+
+`palette.enemy` moved from `#2e2f35` to `#3a2b2e` -- the same darkness, a red
+hue instead of a blue one, with limb and armour tones warmed to match. This is a
+correction rather than a preference: section 15 already assigns **warm and dark**
+to gameplay and forbids the environment any red at all, and the old cool
+near-black was quietly on the wrong side of its own rule. Luminance is matched to
+within a point, so enemies read exactly as dark against grass as they did.
+
 ### Nobody stands inside a cliff
 
 Every walker -- the king and every enemy alike -- is held to `board.canStandOn(x, z, tier)`, never to `isWalkable`. The distinction is the whole rule: **a cliff face is ground.** `isWalkable` only asks whether there is land under the rounded tile, so it happily admits a position inside the side of a rise. A walker that gets there keeps the height of the tier it came from, which puts it *inside the rock* -- invisible, underground, and still alive and pathing.
@@ -1237,10 +1521,57 @@ from a reset, or it silently measures the last experiment instead of the level.
 
 **A silhouette has about ten pixels to work with.** Measured at maximum zoom-in:
 grunt 10.4 screen pixels tall, archer 9.4, brute 15.0. Zoomed out: 5.0, 4.4, 6.9.
+
+> **These numbers are stale and have not been re-measured.** The grunt was
+> rebuilt (below), which changed its height, and every enemy was subsequently
+> scaled up 10% via `UNIT_SIZE_MULTIPLIER`. The scaling is uniform, so the
+> figures above are all a flat 1.10x low; the grunt's was already wrong before
+> that. Re-measure before quoting any of them again.
 The brute reads instantly at over twice the archer's width. The archer and the
-grunt are, to the eye, the same figure -- an upright bow helps the shape and
+grunt were, to the eye, the same figure -- an upright bow helps the shape and
 cannot fix the size, and section 15 has already spent the colour budget by
 reserving warm hues for gameplay.
+
+**The grunt was rebuilt to fix that, and the fix was not height.** Making it
+bigger would have walked it into the brute, whose whole read is being the big
+one. It got *stocky* instead: wider and deeper torso, thicker legs set further
+apart, a slight forward stoop, and slightly LESS height than before. Size order
+intact, aspect ratio inverted.
+
+Four changes, in descending order of how far away they still work:
+
+1. **A round shield with a bright iron boss.** Enemies are near-black, so an
+   unbroken dark blob is the default failure. At twenty pixels the boss is the
+   only one of these four that is still doing work -- and a shield is the melee
+   read, against the archer's bow. This does not break the hue rule: weapons
+   already carry bright metal, and the brute's club head is the same trick.
+2. **Wide shoulders.** Pauldrons on the torso, not on the arm pivots, so they are
+   armour rather than something that windmills when it walks. The game is watched
+   from a high angle, where shoulder span is most of a silhouette.
+3. **A slight stoop** -- 3.4 degrees, enough to lean into the walk. It was
+   first built at 17, which read as a crouching animal rather than a posture;
+   the width and the sunk head, not the pitch, are what make a wide body read as
+   a heavy man.
+4. **No neck** -- a small head sunk under an overhanging helmet. The head box is
+   untextured skin tone on every face, so left large it becomes the brightest
+   thing on a figure that is meant to be dark.
+
+**The shield is tilted toward the sky, not just outward, and that is the part
+that matters.** The camera watches from about forty degrees up and yaws freely, so
+a shield carried vertically is a disc only when its owner happens to be side-on,
+and a plank across the chest the rest of the time. Pitching the face up means the
+disc is what the camera sees at *every* yaw. Any flat detail added to a unit from
+here on has the same constraint.
+
+**The sword is counter-rotated against the stoop**, found by looking rather than
+by reasoning: without it the blade lies over and throws away the bright vertical
+stroke that was the old figure's only distance read. It is counter-rotated by
+*whatever the stoop is*, not by a copied constant, which is why dialling the
+pitch from 17 degrees to 3.4 needed no second edit.
+
+The pitch lives in its own group between `bob` and `torso`, because `applyGait`,
+`applyDeathPose` and `applyDisembarkPose` all assign `torso.rotation` absolutely
+and would silently erase a pitch stored there.
 
 **Separation converged, and knockback clamps.** 99.7% of frames end with no
 overlap at all, and none at all among units ashore more than a second; twelve
@@ -1741,13 +2072,41 @@ Prototype needs perhaps a dozen sounds: bow release, arrow hit, melee hit, unit 
 - Whether +/- 0.75 per tier elevation range is felt from both directions or needs to be larger.
 - Whether the aggro buffer produces clear defender reactions without making enemy groups abandon the castle route too readily. Tune the buffer before adding any further target rules.
 - **Castle siting swings difficulty more than tower count does.** With three towers and unlimited gold, a castle on the tier-2 shelf at (5,3) or (4,4) survives level one; the same three towers lose from most other sites, and from the beach at (4,8) they lose two waves early. That is the map-reading decision section 4 asked for, and it is currently a much bigger lever than anything the player buys -- which may be too big.
-- **The archer and the grunt are the same silhouette at play distance** (9.4 vs 10.4 screen pixels at maximum zoom-in; 4.4 vs 5.0 zoomed out). Geometry cannot separate them at that size. Either give the archer a warm accent -- allowed, since section 15 reserves warm hues for gameplay and enemies are gameplay -- or tint its required ground marker, which is physically larger than the figure standing on it.
 - **The keep is wearing pure red.** Its accent band is `#c2352f`, the same hue as the king's cape, and it sits on a bright tier where it reads as the loudest thing on the island. Section 15 is unambiguous -- nothing in the environment may enter red, orange, gold or deep maroon -- and this is a direct violation inherited from the diorama, where the band was a deliberate focal accent authored before the hue rule existed. Either recolour the band to stone or cool slate, or accept that the king needs to be larger and brighter to win the comparison. Decide before the art pass is called finished; it is a one-line change either way.
 - Whether archer range 4.5 is too short to feel useful at T1. Rescaled with the board, so the question is unchanged, not resolved.
 - Whether the reference island's ~55 buildable tiles is too *many*. The original worry pointed the other way; the art settled it in this direction. Tune via water coverage per level. P5 makes this urgent rather than academic: tile abundance is precisely why breadth beats depth.
 - **Twin Capes may reward turtling on one cape too heavily.** One ramp per cape means a castle up there faces a single chokepoint, and the headless runs never lost a house to it because a stationary king holds the ramp. The intended cost is the far cape's house and the exposed east one, but only a moving player pays it.
 
 ## Decided
+
+**Enemy size is one dial, and it moves art only.** `UNIT_SIZE_MULTIPLIER` in
+`rigs.js` scales every enemy rig; the simulation's push and hit radii are
+authored separately in config and are deliberately not tied to it, so raising it
+changes how big raiders look without changing how they crowd, path or fight.
+
+**The gap between the two is now worth watching.** Two grunts pressed to the
+separation minimum sit `2 x pushRadius` = 0.16 tiles apart, with `2 x` their
+0.116-tile shoulder half-width = 0.232 tiles of shoulder between them: they
+interpenetrate by **0.060 of a tile**. The dial has gone 1.15 -> 1.265 -> 1.3915
+and the bodies were widened and then given half of that widening back, taking
+the overlap 0.016 -> 0.034 -> 0.072 -> 0.060. It still passes as a
+shoulder-to-shoulder horde, and the next increase
+is the one that wants `config.unit.pushRadius` raised with it -- which is a
+gameplay change, not an art one, since push radius sets how densely a wave packs
+into a chokepoint.
+
+*(An earlier revision of this paragraph quoted "under two percent of a tile". It
+compared half-width against push radius directly and forgot that both units
+move; the pairwise figures above are the right ones.)*
+
+**The grunt reads by mass and by one bright mark, not by size.** Rebuilt stocky
+and lightly stooped, with a round shield whose iron boss is the accent; see
+section 15.
+The alternative on the table was a warm accent on the *archer*, which would have
+worked equally well for telling the two apart but would have spent the colour
+budget on the unit that already had a distinctive shape in the bow. Cost: four
+extra InstancedMeshes, which is four draw calls for the type rather than per
+unit. Forty grunts still hold 60 fps.
 
 - **A level change rebuilds the world rather than resetting it.** Board, terrain
   mesh, water shader, flow fields, picker and batched scenery are all baked

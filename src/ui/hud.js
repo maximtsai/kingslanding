@@ -125,6 +125,20 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   const confirmLabel = $('place-confirm-label');
   const cancelPanel = $('place-cancel-panel');
   const cancelButton = $('btn-cancel-place');
+  const deniedLayer = $('place-denied');
+  const deniedText = $('place-denied-text');
+
+  // A rejected spot says WHY out loud, very briefly, instead of only painting a
+  // red footprint. Codes come from the simulation's placement predicates; this
+  // map owns the wording.
+  const PLACE_DENIED_TEXT = {
+    water: 'CAN\u2019T PLACE ON WATER',
+    stairs: 'CAN\u2019T PLACE ON STAIRS',
+    cliff: 'CAN\u2019T PLACE ON CLIFF',
+    obstruction: 'OBSTRUCTION',
+    occupied: 'SPOT TAKEN',
+    nopath: 'NO OPEN PATH'
+  };
 
   function setSelected(type) {
     selected = selected === type ? null : type;
@@ -191,8 +205,9 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     return { type: selected, span: 1 };
   }
 
-  const canPlaceAt = (type, i, j) =>
-    type ? world.structures.canPlace(i, j) : world.structures.canPlaceCastle(i, j);
+  const placeReasonAt = (type, i, j) =>
+    type ? world.structures.canPlaceReason(i, j) : world.structures.canPlaceCastleReason(i, j);
+  const canPlaceAt = (type, i, j) => placeReasonAt(type, i, j) === null;
 
   // Desktop only: the footprint follows the cursor BEFORE the first tap, so the
   // spot can be shopped around without committing to one. It deliberately stops
@@ -215,17 +230,26 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // Called by main on every tap that lands on the ground while something is
   // armed -- including taps on tiles that cannot take the building, because
   // "you cannot put it there" is information the player asked for and the red
-  // footprint is how they get it. There is simply no confirm button on one.
+  // footprint is how they get it. An invalid spot also says WHY for a moment;
+  // there is simply no confirm button on one.
   function propose(i, j) {
     const armed = armedFootprint();
     if (!armed) return false;
     const { type, span } = armed;
-    const valid = canPlaceAt(type, i, j);
+    const reason = placeReasonAt(type, i, j);
+    if (reason !== null) {
+      // A rejected tap never becomes a pending proposal -- it only says why.
+      // Were it stored, the desktop hover (and the ghost riding it) would lock
+      // onto the tile the player already knows is wrong. It also means an
+      // invalid tap elsewhere does not discard a valid proposal already up.
+      feedback.denied();
+      flashDenied(reason, i, j, span);
+      return true;
+    }
     const moved = !pending || pending.i !== i || pending.j !== j;
-    pending = { type, i, j, span, valid };
+    pending = { type, i, j, span, valid: true };
     hovered = null;
     feedback.tap();
-    if (!valid) { confirmLayer.style.display = 'none'; return true; }
     if (type) {
       const spec = config.towers[type];
       confirmLabel.textContent = `${spec.name.toUpperCase()} - ${spec.cost} GOLD`;
@@ -250,21 +274,42 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // almost a hundred pixels above it, which weakened the visual connection
   // between the action and the tile being confirmed.
   const CONFIRM_LIFT = 12;
+  const DENIED_LIFT = 6;
   const EDGE_PAD_X = 88;
   const EDGE_PAD_Y = 70;
 
-  function placeConfirm() {
-    if (!pending || !pending.valid) return;
-    const half = (pending.span - 1) / 2;
+  function anchorFor(i, j, span, lift) {
+    const half = (span - 1) / 2;
+    // Water tiles anchor on the water plane, not their below-sea topY, so a
+    // "can't place on water" toast floats on the surface instead of under it.
     const anchor = view.screenPositionOf(
-      pending.i + half, pending.j + half,
-      world.board.topY(pending.i, pending.j) + 0.08
+      i + half, j + half,
+      Math.max(world.board.topY(i, j) + 0.08, 0.05)
     );
     // Clamped inside the stage: the camera rotates and zooms freely, and a
-    // confirm button that has drifted off the edge is an unfinishable purchase.
-    const x = Math.min(720 - EDGE_PAD_X, Math.max(EDGE_PAD_X, anchor.x));
-    const y = Math.min(1280 - EDGE_PAD_Y, Math.max(EDGE_PAD_Y, anchor.y - CONFIRM_LIFT));
+    // labelled button that has drifted off the edge is unfinishable (or useless).
+    return {
+      x: Math.min(720 - EDGE_PAD_X, Math.max(EDGE_PAD_X, anchor.x)),
+      y: Math.min(1280 - EDGE_PAD_Y, Math.max(EDGE_PAD_Y, anchor.y - lift))
+    };
+  }
+
+  function placeConfirm() {
+    if (!pending || !pending.valid) return;
+    const { x, y } = anchorFor(pending.i, pending.j, pending.span, CONFIRM_LIFT);
     confirmLayer.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+  }
+
+  // The rejection pops in over the rejected spot, holds a beat, then fades --
+  // long enough to read, short enough to never become part of the background.
+  function flashDenied(reason, i, j, span) {
+    deniedText.textContent = PLACE_DENIED_TEXT[reason] || 'CAN\u2019T PLACE THERE';
+    const { x, y } = anchorFor(i, j, span, DENIED_LIFT);
+    deniedLayer.style.left = `${x.toFixed(1)}px`;
+    deniedLayer.style.top = `${y.toFixed(1)}px`;
+    deniedLayer.classList.remove('pop');
+    void deniedLayer.offsetWidth;      // force the animation to restart
+    deniedLayer.classList.add('pop');
   }
 
   confirmButton.onclick = () => {

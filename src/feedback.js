@@ -40,13 +40,20 @@ export function createFeedback(world, audio, view, views) {
   const handlers = {
     // ---- shots leaving ----
     shot(e) {
+      if (e.kind === 'molotov') { audio.play('molotov'); return; }
       if (!e.fromStructure) { audio.play('enemyBow'); return; }
       audio.play(e.trajectory === 'flat' ? 'ballista' : 'bow');
     },
+    // The windup, not the landing: `meleeHit` still fires when the blow
+    // connects, so a swing that whiffs is heard starting and never lands.
+    swingStart() { audio.play('swing'); },
     enemyShot() { audio.play('enemyBow'); },
 
     // ---- shots arriving ----
-    impact(e) { audio.play(e.hit ? 'arrowHit' : 'arrowMiss'); },
+    impact(e) {
+      if (e.kind === 'molotov') { audio.play('burningRock'); return; }
+      audio.play(e.hit ? 'arrowHit' : 'arrowMiss');
+    },
     meleeHit() { audio.play('meleeHit'); },
     spearThrust() { audio.play('spearThrust'); },
     burningRock() { audio.play('burningRock'); jolt(F.shake.burningRock); },

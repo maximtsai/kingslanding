@@ -185,6 +185,29 @@
     to   { transform: scale(1); opacity: 1; }
   }
 
+  /* ---- placement rejection ----
+     An invalid spot pops a short reason over the tile: enough to say WHY, brief
+     enough to never sit on the screen. Anchored over the footprint like the
+     confirm checkmark; the pill is centred on the tile and floats just above it. */
+  #place-denied {
+    left: 0; top: 0; display: grid; place-items: center;
+    transform: translate(-50%, -100%); opacity: 0; z-index: 9;
+  }
+  #place-denied .pill {
+    padding: 7px 16px; border-radius: 999px; white-space: nowrap;
+    background: rgba(24,10,12,.92); border: 2px solid rgba(235,96,84,.92);
+    color: #ffe9e7; text-align: center;
+    font-size: 19px; font-weight: 900; letter-spacing: .06em;
+    text-shadow: 0 2px 6px rgba(0,0,0,.7);
+  }
+  #place-denied.pop { animation: denied-pop 1.15s ease-out forwards; }
+  @keyframes denied-pop {
+    0%   { opacity: 0; transform: translate(-50%, -100%) translateY(9px) scale(.7); }
+    14%  { opacity: 1; transform: translate(-50%, -100%) translateY(0) scale(1.06); }
+    64%  { opacity: 1; transform: translate(-50%, -100%) translateY(0) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -100%) translateY(-3px) scale(1); }
+  }
+
   #wave-preview { inset: 0; }
   #wave-start-title {
     position: absolute; left: 0; right: 0; top: 30%;
@@ -433,17 +456,21 @@
     <div id="place-confirm-label"></div>
   </div>
 
+  <div class="hud" id="place-denied" role="status" aria-live="polite">
+    <div class="pill" id="place-denied-text"></div>
+  </div>
+
   <div class="hud" id="bottom">
     <div id="build-panel">
       <button class="tower-button" data-build="archer">
         <div class="glyph glyph-archer"></div>
         <div class="name">Archer Tower</div>
-        <div class="cost">40 gold</div>
+        <div class="cost">15 gold</div>
       </button>
       <button class="tower-button" data-build="barricade">
         <div class="glyph glyph-barricade"></div>
         <div class="name">Barricade</div>
-        <div class="cost">18 gold</div>
+        <div class="cost">10 gold</div>
       </button>
       <button id="btn-ready">READY</button>
     </div>

@@ -128,8 +128,8 @@ export function createCombat(world) {
   // Both ends of a shot's life are events: `impact` fires whether or not the
   // arrow found anybody, because a miss thudding into the dirt is a sound too,
   // and a volley that only makes noise when it connects reads as unresponsive.
-  function impactEvent(x, z, hit) {
-    world.events.push({ type: 'impact', x, z, hit });
+  function impactEvent(x, z, hit, kind) {
+    world.events.push({ type: 'impact', x, z, hit, kind: kind || 'arrow' });
   }
 
   function groundArrow(p, impactX, impactZ, surfaceY) {
@@ -201,7 +201,7 @@ export function createCombat(world) {
 
   // The trajectory is fixed at release. A target killed by another shot turns
   // this one into a physical miss instead of making it disappear.
-  function fire(from, target, damage, speed, source, trajectory, splash) {
+  function fire(from, target, damage, speed, source, trajectory, splash, kind) {
     const startY = from.y;
     const aim = leadTarget(from, target, speed);
     const dx = aim.x - from.x, dz = aim.z - from.z;
@@ -214,6 +214,9 @@ export function createCombat(world) {
        target, damage, source,
        aimX: aim.x, aimZ: aim.z, aimY: aim.y,
        splash: splash || 0,
+      // What is in the air, as opposed to how it flies. The view picks its
+      // geometry off this; the simulation treats every kind identically.
+      kind: kind || 'arrow',
       trajectory: trajectory || 'arc',
       state: 'flying',
       speed,
@@ -227,6 +230,7 @@ export function createCombat(world) {
     world.events.push({
       type: 'shot', x: from.x, z: from.z,
       trajectory: trajectory || 'arc',
+      kind: kind || 'arrow',
       fromStructure: !!(source && source.isStructure)
     });
   }
@@ -316,7 +320,7 @@ export function createCombat(world) {
         const hit = p.target.isStructure ||
           Math.hypot(p.target.x - p.x, p.target.z - p.z) <=
             (p.target.hitRadius || config.unit.hitRadius);
-        impactEvent(p.x, p.z, p.splash || hit);
+        impactEvent(p.x, p.z, p.splash || hit, p.kind);
         if (p.target.isStructure) {
           world.damageStructure(p.target, p.damage, p.source);
         } else if (p.splash) {
@@ -331,7 +335,13 @@ export function createCombat(world) {
         } else if (hit) {
           world.damageUnit(p.target, p.damage, p.source);
         }
-        if (p.splash) {
+        // A BOTTLE BREAKS. Arrows earn their afterlife -- they stick in the
+        // target, plant in the ground, or overtravel -- but a molotov that has
+        // arrived is glass and burning rag, and leaving it lodged in a wall as a
+        // glowing box is the one way this effect could look broken. The fire it
+        // started is on the building now (see the ember pool in views.js), which
+        // is where the player should be looking anyway.
+        if (p.kind === 'molotov' || p.splash) {
           projectiles.splice(k, 1);
         } else if (!hit) {
           const i = Math.round(p.x), j = Math.round(p.z);

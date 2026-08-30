@@ -173,7 +173,7 @@ export const config = {
     archer: {
       name: 'Archer Tower', line: 'archer', tier: 1,
       cost: 40, hp: 100,
-      range: 2.5, minRange: 0.5,
+      range: 3.0, minRange: 0.5,
       damage: 9, arrowsPerVolley: 2, fireInterval: 1.15,
       arrowSpeed: 8.5, trajectory: 'arc',
       buildTime: 1.5,
@@ -407,7 +407,7 @@ export const config = {
   hero: {
     hp: 100,
     speed: 1.7,                // noticeably faster than a grunt, or he cannot respond
-    range: 4.25,
+    range: 3.5,
     minRange: 0,               // TDD 13: he is never helpless up close
     trajectory: 'arc',         // he lobs, so cliffs do not blind him
     // TDD 13 asks for "grunts die in two shots". 13 took four, which quietly

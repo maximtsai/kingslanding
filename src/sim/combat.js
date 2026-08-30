@@ -159,25 +159,67 @@ export function createCombat(world) {
     p.anchorY = p.y - projectileTargetY(target);
   }
 
-  // Fire-and-track while the target lives. A target killed by another shot turns
+  function leadTarget(from, target, speed) {
+    const dx = target.x - from.x, dz = target.z - from.z;
+    const vx = target.isStructure ? 0 : (target.x - target.px) * config.sim.HZ;
+    const vz = target.isStructure ? 0 : (target.z - target.pz) * config.sim.HZ;
+    const a = vx * vx + vz * vz - speed * speed;
+    const b = 2 * (dx * vx + dz * vz);
+    const c = dx * dx + dz * dz;
+    let time = Math.sqrt(c) / speed;
+
+    if (Math.abs(a) < 1e-6) {
+      if (Math.abs(b) > 1e-6) {
+        const candidate = -c / b;
+        if (candidate > 0) time = candidate;
+      }
+    } else {
+      const discriminant = b * b - 4 * a * c;
+      if (discriminant >= 0) {
+        const root = Math.sqrt(discriminant);
+        const first = (-b - root) / (2 * a);
+        const second = (-b + root) / (2 * a);
+        const candidate = [first, second].filter(t => t > 0).sort((x, z) => x - z)[0];
+        if (candidate !== undefined) time = candidate;
+      }
+    }
+
+    // Very close shots still have a readable minimum flight time, so lead over
+    // that same duration rather than aiming at a point the arrow cannot reach.
+    time = Math.max(0.18, time);
+    // Deliberately underlead a little: perfectly solving the intercept makes
+    // every archer feel unnaturally prescient, while 85% still rewards a target
+    // continuing in the direction it was moving when the arrow was released.
+    const lead = 0.85;
+    return {
+      x: target.x + vx * time * lead,
+      z: target.z + vz * time * lead,
+      y: projectileTargetY(target),
+      duration: time
+    };
+  }
+
+  // The trajectory is fixed at release. A target killed by another shot turns
   // this one into a physical miss instead of making it disappear.
   function fire(from, target, damage, speed, source, trajectory, splash) {
     const startY = from.y;
-    const dx = target.x - from.x, dz = target.z - from.z;
+    const aim = leadTarget(from, target, speed);
+    const dx = aim.x - from.x, dz = aim.z - from.z;
     const span = Math.hypot(dx, dz) || 1;
     projectiles.push({
       id: nextId++,
       x: from.x, z: from.z, y: startY,
       px: from.x, pz: from.z, py: startY,
-      startX: from.x, startZ: from.z, startY,
-      target, damage, source,
-      splash: splash || 0,
+       startX: from.x, startZ: from.z, startY,
+       target, damage, source,
+       aimX: aim.x, aimZ: aim.z, aimY: aim.y,
+       splash: splash || 0,
       trajectory: trajectory || 'arc',
       state: 'flying',
       speed,
       dirX: dx / span, dirY: 0, dirZ: dz / span,
       t: 0,
-      duration: Math.max(0.18, Math.hypot(target.x - from.x, target.z - from.z) / speed)
+       duration: aim.duration
     });
     // The release. Carries the trajectory because a bowstring and a ballista are
     // different sounds, and who fired it because a tower and a landing party's
@@ -259,8 +301,7 @@ export function createCombat(world) {
 
       p.t += dt / p.duration;
       const t = Math.min(1, p.t);
-      const tx = p.target.x, tz = p.target.z;
-      const ty = projectileTargetY(p.target);
+      const tx = p.aimX, tz = p.aimZ, ty = p.aimY;
       p.x = p.startX + (tx - p.startX) * t;
       p.z = p.startZ + (tz - p.startZ) * t;
 
@@ -272,9 +313,10 @@ export function createCombat(world) {
       setDirection(p, p.x - p.px, p.y - p.py, p.z - p.pz);
 
       if (t >= 1) {
-        // One projectile type, two kinds of victim: towers shoot people, enemy
-        // archers shoot buildings.
-        impactEvent(p.x, p.z, true);
+        const hit = p.target.isStructure ||
+          Math.hypot(p.target.x - p.x, p.target.z - p.z) <=
+            (p.target.hitRadius || config.unit.hitRadius);
+        impactEvent(p.x, p.z, p.splash || hit);
         if (p.target.isStructure) {
           world.damageStructure(p.target, p.damage, p.source);
         } else if (p.splash) {
@@ -286,11 +328,15 @@ export function createCombat(world) {
             world.damageUnit(u, p.damage, p.source);
           }
           world.events.push({ type: 'splash', x: p.x, z: p.z, radius: p.splash });
-        } else {
+        } else if (hit) {
           world.damageUnit(p.target, p.damage, p.source);
         }
         if (p.splash) {
           projectiles.splice(k, 1);
+        } else if (!hit) {
+          const i = Math.round(p.x), j = Math.round(p.z);
+          if (board.isLand(i, j)) groundArrow(p, p.x, p.z, board.groundYAt(p.x, p.z));
+          else enterWater(p);
         } else {
           p.state = 'overtravel';
           p.overtravel = P.overtravelDistance;

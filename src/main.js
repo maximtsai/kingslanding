@@ -46,6 +46,7 @@ const SEED = 4471;                    // the diorama's seed; keeps the island id
 export async function boot() {
   const host = document.getElementById('viewport');
   const stage = document.getElementById('stage');
+  const loading = document.getElementById('loading');
 
   // The audio context outlives any one level: it is expensive to build, a
   // browser will only start it from a user gesture, and there is no reason a
@@ -72,6 +73,9 @@ export async function boot() {
   }
 
   go(LEVEL_ORDER[0]);
+  // Let the initialized scene reach the browser's render queue before fading
+  // the cover; otherwise a fast machine can flash an unpainted viewport.
+  requestAnimationFrame(() => loading.classList.add('ready'));
   return window.game;
 }
 

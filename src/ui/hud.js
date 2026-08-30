@@ -122,6 +122,9 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
   const confirmLayer = $('place-confirm');
   const confirmButton = $('btn-confirm-place');
+  const confirmLabel = $('place-confirm-label');
+  const cancelPanel = $('place-cancel-panel');
+  const cancelButton = $('btn-cancel-place');
 
   function setSelected(type) {
     selected = selected === type ? null : type;
@@ -144,21 +147,39 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
   // ---- siting the castle (TDD 4) ----
   // The same arm-tap-confirm shape as every tower, driven by one round button
-  // instead of a bar of them, because there is only ever one thing to place.
+  // instead of a bar of them. Once armed, the shared cancel button owns the
+  // bottom bar until the castle is placed or placement is abandoned.
   const castleModeButton = $('btn-castle-mode');
   const castleHint = $('castle-hint');
-  const CASTLE_HINT_IDLE = '';
+  const CASTLE_HINT_IDLE = 'Choose the castle button, then pick a flat 2\u00d72 site.';
   const CASTLE_HINT_ARMED = 'Tap a flat 2\u00d72 of open ground, then confirm.';
 
   castleModeButton.onclick = () => {
     feedback.tap();
     castleArming = !castleArming;
-    // Pressing it again puts the map back down. Nothing has been bought yet, so
-    // there is nothing to undo -- only a proposal to forget.
+    // Nothing has been bought yet; arming only hands control to the shared
+    // placement/cancel flow.
     clearPending();
     castleModeButton.classList.toggle('on', castleArming);
     castleHint.textContent = castleArming ? CASTLE_HINT_ARMED : CASTLE_HINT_IDLE;
     onSelectTower(castleArming ? 'castle' : null);
+    refreshPanels();
+  };
+
+  function cancelPlacement() {
+    selected = null;
+    castleArming = false;
+    for (const button of buildButtons) button.classList.toggle('on', false);
+    castleModeButton.classList.toggle('on', false);
+    castleHint.textContent = CASTLE_HINT_IDLE;
+    clearPending();
+    onSelectTower(null);
+    refreshPanels();
+  }
+
+  cancelButton.onclick = () => {
+    feedback.tap();
+    cancelPlacement();
   };
 
   // What is being placed right now, or null when nothing is armed.
@@ -205,6 +226,14 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     hovered = null;
     feedback.tap();
     if (!valid) { confirmLayer.style.display = 'none'; return true; }
+    if (type) {
+      const spec = config.towers[type];
+      confirmLabel.textContent = `${spec.name.toUpperCase()} - ${spec.cost} GOLD`;
+      confirmButton.setAttribute('aria-label', `Build ${spec.name} for ${spec.cost} gold`);
+    } else {
+      confirmLabel.textContent = 'CASTLE - FREE';
+      confirmButton.setAttribute('aria-label', 'Build castle here');
+    }
     confirmLayer.style.display = 'block';
     placeConfirm();
     // Re-trigger the pop only when the target actually moves. Replaying it on
@@ -217,22 +246,24 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     return true;
   }
 
-  // How far above the footprint the button floats, in stage pixels. Enough that
-  // the thumb pressing it is not covering the thing being confirmed.
-  const CONFIRM_LIFT = 96;
-  const EDGE_PAD = 54;
+  // The checkmark sits directly over the proposed footprint. It used to float
+  // almost a hundred pixels above it, which weakened the visual connection
+  // between the action and the tile being confirmed.
+  const CONFIRM_LIFT = 12;
+  const EDGE_PAD_X = 88;
+  const EDGE_PAD_Y = 70;
 
   function placeConfirm() {
     if (!pending || !pending.valid) return;
     const half = (pending.span - 1) / 2;
     const anchor = view.screenPositionOf(
       pending.i + half, pending.j + half,
-      world.board.topY(pending.i, pending.j) + 0.5
+      world.board.topY(pending.i, pending.j) + 0.08
     );
     // Clamped inside the stage: the camera rotates and zooms freely, and a
     // confirm button that has drifted off the edge is an unfinishable purchase.
-    const x = Math.min(720 - EDGE_PAD, Math.max(EDGE_PAD, anchor.x));
-    const y = Math.min(1280 - EDGE_PAD, Math.max(EDGE_PAD, anchor.y - CONFIRM_LIFT));
+    const x = Math.min(720 - EDGE_PAD_X, Math.max(EDGE_PAD_X, anchor.x));
+    const y = Math.min(1280 - EDGE_PAD_Y, Math.max(EDGE_PAD_Y, anchor.y - CONFIRM_LIFT));
     confirmLayer.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
   }
 
@@ -245,6 +276,8 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
       castleModeButton.classList.toggle('on', false);
       castleHint.textContent = CASTLE_HINT_IDLE;
       clearPending();
+      onSelectTower(null);
+      refreshPanels();
       return;
     }
     const type = pending.type;
@@ -344,6 +377,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     // incoming-wave badges. It is a shot, not a screen.
     const cutscene = world.phase === PHASE.INTRO;
     const inspectingNow = building && !!inspecting;
+    const placingNow = (building || siting) && arming();
     const over = world.phase === PHASE.LOST || world.phase === PHASE.WON;
     // Settled here rather than only in update(), so a HUD built for a new level
     // does not inherit the previous one's win screen for a frame. The click that
@@ -355,9 +389,23 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     // that decision wants.
     previewBox.style.display = (building || siting) && !cutscene ? 'flex' : 'none';
     bottom.style.display = building || siting ? 'flex' : 'none';
-    buildPanel.style.display = building && !inspectingNow ? 'flex' : 'none';
+    buildPanel.style.display = building && !inspectingNow && !placingNow ? 'flex' : 'none';
     towerPanel.style.display = inspectingNow ? 'flex' : 'none';
-    castlePrompt.style.display = siting ? 'flex' : 'none';
+    castlePrompt.style.display = siting && !placingNow ? 'flex' : 'none';
+    cancelPanel.style.display = placingNow ? 'flex' : 'none';
+    const nextBottomPanel = buildPanel.style.display !== 'none' ? buildPanel
+      : towerPanel.style.display !== 'none' ? towerPanel
+      : castlePrompt.style.display !== 'none' ? castlePrompt
+      : cancelPanel.style.display !== 'none' ? cancelPanel : null;
+    if (nextBottomPanel !== shownBottomPanel) {
+      if (shownBottomPanel) shownBottomPanel.classList.remove('bottom-panel-pop');
+      shownBottomPanel = nextBottomPanel;
+      if (shownBottomPanel) {
+        shownBottomPanel.classList.remove('bottom-panel-pop');
+        void shownBottomPanel.offsetWidth;
+        shownBottomPanel.classList.add('bottom-panel-pop');
+      }
+    }
     if (inspectingNow) drawTowerPanel();
     // Driven from here rather than only from setSelected, because the grid
     // depends on the PHASE as much as on the selection -- and returning to the
@@ -568,6 +616,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   const phaseLabel = $('phase-label');
   const phaseSub = $('phase-sub');
   let lastGold, lastWaveText, lastPoor;
+  let shownBottomPanel = null;
 
   $('level-name').textContent = world.board.level.name;
   refreshPanels();

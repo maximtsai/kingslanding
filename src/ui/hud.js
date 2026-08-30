@@ -387,7 +387,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     // Shown whenever the player is deciding, which includes siting the castle --
     // knowing which shore the first wave lands on is exactly the information
     // that decision wants.
-    previewBox.style.display = (building || siting) && !cutscene ? 'flex' : 'none';
+    previewBox.style.display = building && !!world.structures.theCastle() && !cutscene ? 'flex' : 'none';
     bottom.style.display = building || siting ? 'flex' : 'none';
     buildPanel.style.display = building && !inspectingNow && !placingNow ? 'flex' : 'none';
     towerPanel.style.display = inspectingNow ? 'flex' : 'none';
@@ -692,6 +692,8 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
       // The preview is rebuilt on identity, so this is a string compare on most
       // frames and a DOM rebuild only when the wave actually changes.
+      const showPreview = world.phase === PHASE.BUILD && !!world.structures.theCastle();
+      previewBox.style.display = showPreview ? 'flex' : 'none';
       buildPreview();
       if (threats.length) aimPreview();
 

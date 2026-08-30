@@ -22,7 +22,7 @@
 // cool and green and gameplay warm and dark, so enemies cannot use colour to
 // separate themselves). That leaves shape and size to do all the work:
 //
-//   GRUNT   the baseline. Spear held high.
+//   GRUNT   the baseline. One broad sword held high.
 //   ARCHER  slighter, stooped, bow held across the body -- reads as "not melee".
 //   BRUTE   half again as tall and much wider, no helmet, a heavy club.
 
@@ -37,7 +37,7 @@ const TYPES = {
     leg: [0.052, 0.07, 0.16], hipX: 0.05, hipY: 0.16,
     arm: [0.048, 0.06, 0.19], shoulderX: 0.11, shoulderY: 0.42,
     armCant: 0.18,
-    weapon: 'spear'
+    weapon: 'sword'
   },
   archer: {
     scale: 0.43 * UNIT_SIZE_MULTIPLIER,
@@ -65,8 +65,20 @@ export function createRigFactory(THREE, kit, P) {
   const { mat, bevelBox } = kit;
 
   // Geometry shared across every figure of a type. Built once.
-  const spearGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.62, 4);
-  const spearTipGeo = new THREE.ConeGeometry(0.028, 0.1, 4);
+  const swordShape = new THREE.Shape();
+  swordShape.moveTo(-0.05, -0.22);
+  swordShape.lineTo(-0.075, 0.11);
+  swordShape.lineTo(0, 0.28);
+  swordShape.lineTo(0.075, 0.11);
+  swordShape.lineTo(0.05, -0.22);
+  swordShape.closePath();
+  const swordBladeGeo = new THREE.ExtrudeGeometry(swordShape, {
+    depth: 0.024, bevelEnabled: false
+  });
+  swordBladeGeo.translate(0, 0, -0.012);
+  const swordGripGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.14, 5);
+  const swordGuardGeo = new THREE.BoxGeometry(0.17, 0.035, 0.04);
+  const swordPommelGeo = new THREE.OctahedronGeometry(0.035, 0);
   // Deliberately oversized. Measured at maximum zoom-in, a grunt stands 10.4
   // screen pixels tall and an archer 9.9 -- half a pixel apart, which is to say
   // identical. Size cannot separate them and colour is spoken for (TDD 15 gives
@@ -120,13 +132,22 @@ export function createRigFactory(THREE, kit, P) {
     // The weapon rides the right shoulder, so it swings with the arm holding it.
     // The animator damps that arm (config.anim.SPEAR_DAMP) or it windmills.
     const right = shoulders[1];
-    if (T.weapon === 'spear') {
-      const spear = new THREE.Mesh(spearGeo, woodMat);
-      spear.position.set(0, -0.12, 0); spear.rotation.z = -0.24;
-      right.add(spear);
-      const tip = new THREE.Mesh(spearTipGeo, woodMat);
-      tip.position.set(0.07, 0.18, 0); tip.rotation.z = -0.24;
-      right.add(tip);
+    if (T.weapon === 'sword') {
+      const sword = new THREE.Group();
+      sword.position.set(0.025, -0.04, 0.015);
+      sword.rotation.z = -0.28;
+      const blade = new THREE.Mesh(swordBladeGeo, ironMat);
+      sword.add(blade);
+      const guard = new THREE.Mesh(swordGuardGeo, woodMat);
+      guard.position.y = -0.235;
+      sword.add(guard);
+      const grip = new THREE.Mesh(swordGripGeo, darkWoodMat);
+      grip.position.y = -0.32;
+      sword.add(grip);
+      const pommel = new THREE.Mesh(swordPommelGeo, ironMat);
+      pommel.position.y = -0.405;
+      sword.add(pommel);
+      right.add(sword);
     } else if (T.weapon === 'bow') {
       // Stood on end alongside the body, reaching above the head. From directly
       // above a horizontal bow is a hoop and reads as nothing at all; upright,

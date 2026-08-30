@@ -1108,10 +1108,10 @@ export function createGhostView(THREE, board, dynamicRoot) {
   const geometry = new THREE.BufferGeometry();
   const material = new THREE.MeshBasicMaterial({
     vertexColors: true, transparent: true, opacity: 0.42,
-    depthTest: false, side: THREE.DoubleSide
+    depthTest: true, depthWrite: false, side: THREE.DoubleSide
   });
   const coverage = new THREE.Mesh(geometry, material);
-  coverage.renderOrder = 3;
+  coverage.renderOrder = 1;
   coverage.visible = false;
   dynamicRoot.add(coverage);
 
@@ -1132,17 +1132,17 @@ export function createGhostView(THREE, board, dynamicRoot) {
 
   const outline = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
-    new THREE.MeshBasicMaterial({ color: 0x14202a, transparent: true, opacity: 0.5, depthTest: false })
+    new THREE.MeshBasicMaterial({ color: 0x14202a, transparent: true, opacity: 0.5, depthTest: true, depthWrite: false })
   );
-  outline.renderOrder = 4;
+  outline.renderOrder = 1;
   markerGroup.add(outline);
 
   const marker = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.34, depthTest: false })
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.34, depthTest: true, depthWrite: false })
   );
   marker.position.z = -0.004;      // toward the camera; the group is rotated flat
-  marker.renderOrder = 5;
+  marker.renderOrder = 1;
   markerGroup.add(marker);
 
   // Border width in tiles, held constant as the footprint grows: a 2x2 castle
@@ -1170,7 +1170,7 @@ export function createGhostView(THREE, board, dynamicRoot) {
     // `span` is the footprint being previewed: 1 for a tower, 2 for the castle.
     show(i, j, valid, probe, span) {
       const size = span || 1;
-      const y = board.topY(i, j) + 0.02;
+      const y = board.topY(i, j) + 0.025;
       markerGroup.visible = true;
       // Anchored at (i, j), so a 2x2 preview covers the tiles it would occupy.
       markerGroup.position.set(board.px(i + (size - 1) / 2), y + 0.006, board.px(j + (size - 1) / 2));
@@ -1193,7 +1193,7 @@ export function createGhostView(THREE, board, dynamicRoot) {
           const verdict = probe(i, j, ti, tj);
           if (verdict === 'out') continue;
           const rgb = verdict === 'hit' ? COVERED : (verdict === 'dead' ? DEAD : BLIND);
-          quad(ti, tj, board.topY(ti, tj) + 0.02, rgb);
+          quad(ti, tj, board.topY(ti, tj) + 0.025, rgb);
         }
       }
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

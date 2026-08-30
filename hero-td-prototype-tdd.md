@@ -97,6 +97,26 @@ exactly, and the four that move are inside a ramp corridor, which is the one
 place a walker is legitimately between two tiers. Across 49,445 unit-frames of
 real waves the worst deviation from the remembered tier was 0.0000.
 
+### Nobody stands inside a cliff
+
+Every walker -- the king and every enemy alike -- is held to `board.canStandOn(x, z, tier)`, never to `isWalkable`. The distinction is the whole rule: **a cliff face is ground.** `isWalkable` only asks whether there is land under the rounded tile, so it happily admits a position inside the side of a rise. A walker that gets there keeps the height of the tier it came from, which puts it *inside the rock* -- invisible, underground, and still alive and pathing.
+
+On level one, 437 of 1034 sampled walkable positions are cliff interiors for a tier-1 walker. That is the surface area this predicate covers, and it is not an edge case.
+
+The hero got `canStandOn` when he hit this; the enemies were left on the weaker test and hit it too, through separation shoving them into a rise. Both now use the same predicate, and separation judges each unit on **its own** tier -- two units shouldering each other across a ledge are not standing on the same ground.
+
+**Order is load-bearing: tier, then separation, then height.**
+
+```
+walkElevation   ->  promotes the tier of anything that just left a ramp
+separation      ->  clamps, tier-aware, against that fresh tier
+walkElevation   ->  final height, since separation may have moved it
+```
+
+Clamping before resolving elevation tests the tile at the *top* of a ramp against the tier at the *bottom*, rejects it, and pins the walker to the ramp forever. That is not hypothetical -- the hero's clamp was written the wrong way round first and did exactly this.
+
+**The failure mode to watch for when tightening any of this** is not units in cliffs, it is units that stop: a walker rejected every frame stands still, stays alive, and holds the wave open forever (see TDD 6 -- never allow a state where a unit has no valid action). Hence slide-before-revert everywhere, and the last-resort snap to nearest land, which must also adopt that tile's tier or it trades drowning for burial.
+
 ### The hero is the only mover without a separation pass
 
 Units are clamped every frame by `separation.resolve`; the hero is not in

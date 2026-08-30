@@ -231,7 +231,9 @@ export function createWorld(board) {
         if (score < bestScore) { bestScore = score; home = [ci, cj]; }
       }
     }
-    if (home) heroControl.setHome(home[0], home[1]);
+    const onCastleSpot = hero.x >= i && hero.x < i + span &&
+      hero.z >= j && hero.z < j + span;
+    if (onCastleSpot && home) heroControl.setHome(home[0], home[1]);
     world.phase = PHASE.BUILD;
     world.refreshPreview();
     takeSnapshot();
@@ -409,17 +411,34 @@ export function createWorld(board) {
     waves.step(dt);
     for (const u of world.units) enemies.step(u, dt);
 
+    // TIER FIRST, then separation, then height. The order is load-bearing and
+    // the middle step is why.
+    //
+    // Separation's legality test is tier-aware (a cliff face is ground, so
+    // "is there land here" was letting units walk bodily into hillsides). That
+    // makes it depend on a tier that is CURRENT: walkElevation is the thing that
+    // notices a unit stepping off the top of a ramp, and if separation ran first
+    // it would test the tile at the top of the stairs against the tier at the
+    // bottom, reject it, and pin the unit to the ramp forever. The hero hit
+    // exactly this bug when his clamp was ordered the other way round.
+    for (const u of world.units) {
+      if (!u.alive || u.state === 'boat') continue;
+      // Remembered tier, not sampled ground -- see board.walkElevation.
+      const e = board.walkElevation(u.x, u.z, u.tier, u.onRamp);
+      u.tier = e.tier; u.onRamp = e.onRamp;
+    }
+
     // TDD 8: separation runs after everything has moved and before anything
     // reads a position. Movement decides where a unit wants to be; this decides
     // where it may actually stand.
     separation.resolve(world.units);
+
+    // Height last, because separation may have moved them since the pass above.
     for (const u of world.units) {
-      if (u.alive && u.state !== 'boat') {
-        // Remembered tier, not sampled ground -- see board.walkElevation.
-        const e = board.walkElevation(u.x, u.z, u.tier, u.onRamp);
-        u.tier = e.tier; u.onRamp = e.onRamp;
-        u.y = e.y - config.board.SINK;
-      }
+      if (!u.alive || u.state === 'boat') continue;
+      const e = board.walkElevation(u.x, u.z, u.tier, u.onRamp);
+      u.tier = e.tier; u.onRamp = e.onRamp;
+      u.y = e.y - config.board.SINK;
     }
 
     stepTowers(world, combat, dt);

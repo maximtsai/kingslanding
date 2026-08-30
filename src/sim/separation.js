@@ -19,18 +19,25 @@ const S = config.separation;
 
 export function createSeparation(board, structures) {
 
-  // A position is only legal if a walker could stand on it. Separation can
-  // otherwise shove a unit off a cliff or into the sea, which no amount of
-  // pathing would have allowed -- so every push is provisional until this agrees.
+  // A position is only legal if THIS walker, on the tier it believes it is
+  // standing on, could stand there. Separation can otherwise shove a unit off a
+  // cliff or into the sea, which no amount of pathing would have allowed -- so
+  // every push is provisional until this agrees.
   //
-  // NOT simply `isLand` of the rounded tile. A unit halfway across a diagonal is
-  // over a shoulder tile it could never stand in the middle of, and rounding
-  // says no; it would then be shoved back onto the tile it came from every
-  // frame, which is a deadlock and was one. board.isWalkable knows about the
-  // crossing corridor, and is the same predicate groundYAt uses to decide how
-  // high the ground is there.
-  function legal(x, z) {
-    return board.isWalkable(x, z);
+  // TIER-AWARE, and it has to be. This used to ask board.isWalkable, which only
+  // answers "is there ground here" -- and A CLIFF FACE IS GROUND. A unit could
+  // therefore be walked or shoved into the side of a rise, keep the height of
+  // the tier it came from, and end up standing inside the rock: invisible,
+  // underground, and still alive. That is the identical gap the hero fell
+  // through before board.canStandOn was written for him; the units were simply
+  // never moved onto it.
+  //
+  // canStandOn is strictly stronger than isWalkable and already knows about the
+  // two cases where a walker is legitimately over a tile that is not its own
+  // tier -- ramps, and the corridor of a diagonal crossing -- so it subsumes
+  // what isWalkable was here to allow.
+  function legal(x, z, tier) {
+    return board.canStandOn(x, z, tier);
   }
 
   // TDD 8: "for each overlapping pair, push both along the connecting axis by
@@ -64,9 +71,11 @@ export function createSeparation(board, structures) {
           const nx = (dx / distance) * shove, nz = (dz / distance) * shove;
 
           // Provisional: a push that would put a unit somewhere it could never
-          // have walked is simply not taken.
-          if (legal(A.x - nx, A.z - nz)) { A.x -= nx; A.z -= nz; }
-          if (legal(B.x + nx, B.z + nz)) { B.x += nx; B.z += nz; }
+          // have walked is simply not taken. Each is judged on its OWN tier --
+          // two units shouldering each other across a ledge are not standing on
+          // the same ground.
+          if (legal(A.x - nx, A.z - nz, A.tier)) { A.x -= nx; A.z -= nz; }
+          if (legal(B.x + nx, B.z + nz, B.tier)) { B.x += nx; B.z += nz; }
         }
       }
     }
@@ -135,7 +144,7 @@ export function createSeparation(board, structures) {
     while (travelled < distance) {
       const stride = Math.min(S.KNOCKBACK_STEP, distance - travelled);
       const nx = x + ux * stride, nz = z + uz * stride;
-      if (!legal(nx, nz)) break;                    // clamp at the edge
+      if (!legal(nx, nz, u.tier)) break;           // clamp at the edge and at cliffs
       if (structures.at(Math.round(nx), Math.round(nz))) break;   // and at walls
       x = nx; z = nz;
       travelled += stride;
@@ -172,7 +181,7 @@ export function createSeparation(board, structures) {
       pushOutOfStructures(u);
       // Final guarantee: whatever the passes above did, a unit ends the frame on
       // ground it could legally stand on.
-      if (legal(u.x, u.z)) { u.safeX = u.x; u.safeZ = u.z; continue; }
+      if (legal(u.x, u.z, u.tier)) { u.safeX = u.x; u.safeZ = u.z; continue; }
 
       // SLIDE BEFORE REVERTING. Taking back the whole move is what turns "this
       // step was illegal" into "this unit never moves again": it is put back
@@ -182,16 +191,23 @@ export function createSeparation(board, structures) {
       // instead, which is both the right behaviour and an escape.
       //
       // TDD 6: never allow a state where a unit has no valid action.
-      if (legal(u.x, u.safeZ)) { u.z = u.safeZ; u.safeX = u.x; continue; }
-      if (legal(u.safeX, u.z)) { u.x = u.safeX; u.safeZ = u.z; continue; }
+      if (legal(u.x, u.safeZ, u.tier)) { u.z = u.safeZ; u.safeX = u.x; continue; }
+      if (legal(u.safeX, u.z, u.tier)) { u.x = u.safeX; u.safeZ = u.z; continue; }
 
-      if (legal(u.safeX, u.safeZ)) { u.x = u.safeX; u.z = u.safeZ; continue; }
+      if (legal(u.safeX, u.safeZ, u.tier)) { u.x = u.safeX; u.z = u.safeZ; continue; }
       // Last resort. If even the remembered position is off the island, the unit
       // was never legally placed to begin with -- snap it to the nearest land
       // tile rather than leaving it stranded at sea, alive and unreachable,
       // where it would hold the wave open forever.
       const rescue = nearestLand(u.x, u.z);
-      if (rescue) { u.x = rescue[0]; u.z = rescue[1]; u.safeX = u.x; u.safeZ = u.z; }
+      if (rescue) {
+        u.x = rescue[0]; u.z = rescue[1]; u.safeX = u.x; u.safeZ = u.z;
+        // Adopt the tier of wherever it was put down. Keeping the old one would
+        // trade "stranded at sea" for "standing inside a hillside", which is the
+        // very failure this rescue is the last line of defence against.
+        u.tier = board.at(rescue[0], rescue[1]) || u.tier;
+        u.onRamp = false;
+      }
     }
   }
 

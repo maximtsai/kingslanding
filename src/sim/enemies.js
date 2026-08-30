@@ -83,7 +83,9 @@ export function createEnemies(world, flowGround, combat) {
       moving: false,
       footfall: 0,
       boat: null,
-      boatOffset: 0
+      boatOffset: 0,
+      boatTargetOffset: 0,
+      disembark: null
     };
     u.losId = 'u' + u.id;
     u.pGait = u.gaitPhase;
@@ -185,16 +187,13 @@ export function createEnemies(world, flowGround, combat) {
   }
 
   function step(u, dt) {
-    u.px = u.x; u.pz = u.z; u.py = u.y;
-    u.pFacing = u.facing; u.pGait = u.gaitPhase;
-
     if (!u.alive) { u.moving = false; return; }
 
     const spec = config.enemies[u.type];
 
     if (u.state === 'boat') {
-      u.moving = false;
-      if (spec.ranged) stepBoatArcher(u, spec, dt);
+      if (u.disembark) u.moving = false;
+      if (spec.ranged && !u.disembark) stepBoatArcher(u, spec, dt);
       return;
     }
 

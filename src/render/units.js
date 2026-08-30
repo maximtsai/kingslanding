@@ -143,6 +143,14 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
     joints.shoulders[1].rotation.z = 1.25 * fall;
   }
 
+  function applyDisembarkPose(joints, t) {
+    const tuck = Math.sin(Math.PI * t);
+    joints.hips[0].rotation.x = joints.hips[1].rotation.x = -0.5 * tuck;
+    joints.shoulders[0].rotation.x = joints.shoulders[1].rotation.x = 0.28 * tuck;
+    joints.torso.rotation.x = -0.16 * tuck;
+    joints.bob.position.y -= 0.035 * tuck;
+  }
+
   // alpha is the fraction of a sim step already elapsed (see sim/loop.js).
   function sync(world, alpha, elapsed) {
     for (const kit of kits.values()) kit.count = 0;
@@ -202,6 +210,11 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
       // or still riding a boat -- falls through to the idle pose.
       const speed01 = u.moving ? Math.min(1, u.speed / REFERENCE_SPEED) : 0;
       applyGait(kit.template.joints, gait, speed01, world.time * A.IDLE_RATE + u.id);
+      if (u.disembark) {
+        const jumpAge = Math.max(0, u.disembark.elapsed - (1 - alpha) / config.sim.HZ);
+        applyDisembarkPose(kit.template.joints,
+          Math.min(1, jumpAge / config.waves.disembarkSeconds));
+      }
       if (!u.alive) {
         const age = Math.max(0, u.deathAge - (1 - alpha) / config.sim.HZ);
         applyDeathPose(root, kit.template.joints, age, u.id % 2 ? 1 : -1);
@@ -217,7 +230,7 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
 
       // The blob sits on the ground, not on the bouncing body, so it stays put
       // while the figure rises off it.
-      if (u.alive && blobCount < BLOB_CAP) {
+      if (u.alive && !u.disembark && blobCount < BLOB_CAP) {
         const size = 0.24 * (rigs.scaleOf(u.type) / rigs.scaleOf('grunt'));
         position.set(wx, y + config.board.SINK + 0.012, wz);
         scale.set(size, size, size);

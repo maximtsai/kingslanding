@@ -112,6 +112,9 @@ export function createWaves(world) {
   function spawnBoat(definition) {
     const landing = definition.landing || pickLanding(definition.from);
     const distance = Math.hypot(landing.stop.x - landing.sx, landing.stop.z - landing.sz);
+    const spacing = definition.units.length > 1
+      ? Math.min(PASSENGER_SPACING, 0.9 / (definition.units.length - 1))
+      : 0;
     const boat = {
       id: nextId++,
       x: landing.sx, z: landing.sz, y: 0,
@@ -123,6 +126,12 @@ export function createWaves(world) {
       landed: false,
       unloaded: false,
       passengers: [],
+      passengerSpacing: spacing,
+      frontOffset: 0,
+      unloadQueue: [],
+      activePassengers: [],
+      launchTimer: 0,
+      landingSpots: [],
       alive: true
     };
 
@@ -137,12 +146,130 @@ export function createWaves(world) {
       if (!u) return;
       u.state = 'boat';
       u.boat = boat;
-      u.boatOffset = (index - (definition.units.length - 1) / 2) * PASSENGER_SPACING;
+      u.boatOffset = (index - (definition.units.length - 1) / 2) * spacing;
+      u.boatTargetOffset = u.boatOffset;
       boat.passengers.push(u);
     });
+    boat.frontOffset = boat.passengers.length
+      ? Math.max(...boat.passengers.map(u => u.boatOffset))
+      : 0;
 
     boats.push(boat);
     return boat;
+  }
+
+  function placeAboard(u, boat) {
+    u.x = boat.x + Math.sin(boat.facing) * u.boatOffset;
+    u.z = boat.z + Math.cos(boat.facing) * u.boatOffset;
+    u.y = 0.16;
+    u.facing = boat.facing;
+  }
+
+  function compactPassengers(boat, dt) {
+    const waiting = boat.unloadQueue.filter(u =>
+      u.alive && u.state === 'boat' && !u.disembark);
+    for (let index = 0; index < waiting.length; index++) {
+      const u = waiting[index];
+      u.boatTargetOffset = boat.frontOffset - index * boat.passengerSpacing;
+      const delta = u.boatTargetOffset - u.boatOffset;
+      const advance = Math.sign(delta) * Math.min(Math.abs(delta), W.passengerAdvanceSpeed * dt);
+      u.boatOffset += advance;
+      u.moving = Math.abs(advance) > 1e-6;
+      if (u.moving) {
+        u.gaitPhase = (u.gaitPhase +
+          (Math.abs(advance) / config.anim.STRIDE) * Math.PI) % (Math.PI * 2);
+      }
+      placeAboard(u, boat);
+    }
+  }
+
+  function startDisembark(boat) {
+    let u = null;
+    while (boat.unloadQueue.length && !u) {
+      const candidate = boat.unloadQueue.shift();
+      if (candidate.alive && candidate.state === 'boat') u = candidate;
+    }
+    if (!u) return false;
+
+    const [li, lj] = boat.land;
+    let toX = li, toZ = lj, found = false;
+    const validSpot = (x, z, keepApart) => {
+      if (!board.isWalkable(x, z)) return false;
+      if (world.structures.at(Math.round(x), Math.round(z))) return false;
+      return !keepApart || !boat.landingSpots.some(p => Math.hypot(x - p.x, z - p.z) < 0.18);
+    };
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 0.12 + Math.random() * 0.7;
+      const x = li + Math.cos(angle) * radius;
+      const z = lj + Math.sin(angle) * radius;
+      if (!validSpot(x, z, true)) continue;
+      toX = x; toZ = z; found = true;
+      break;
+    }
+    // Dense parties can exhaust the comfortably separated samples. Keep the
+    // destination random and valid even then; separation handles any crowding
+    // after touchdown.
+    for (let attempt = 0; !found && attempt < 24; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.random() * 1.1;
+      const x = li + Math.cos(angle) * radius;
+      const z = lj + Math.sin(angle) * radius;
+      if (!validSpot(x, z, false)) continue;
+      toX = x; toZ = z; found = true;
+    }
+    // A fully occupied beach is unusual but legal. Search outward over land
+    // rather than falling back inside a structure.
+    for (let radius = 0; !found && radius <= board.N; radius++) {
+      for (let dj = -radius; dj <= radius && !found; dj++) {
+        for (let di = -radius; di <= radius; di++) {
+          if (Math.max(Math.abs(di), Math.abs(dj)) !== radius) continue;
+          const x = li + di, z = lj + dj;
+          if (!validSpot(x, z, false)) continue;
+          toX = x; toZ = z; found = true;
+          break;
+        }
+      }
+    }
+    if (!found) { boat.unloadQueue.unshift(u); return false; }
+    boat.landingSpots.push({ x: toX, z: toZ });
+    u.disembark = {
+      elapsed: 0,
+      fromX: u.x, fromZ: u.z, fromY: u.y,
+      toX, toZ,
+      toY: board.groundYAt(toX, toZ) - config.board.SINK
+    };
+    u.moving = false;
+    u.facing = boat.facing;
+    boat.activePassengers.push(u);
+    return true;
+  }
+
+  function stepDisembarks(boat, dt) {
+    for (let index = boat.activePassengers.length - 1; index >= 0; index--) {
+      const u = boat.activePassengers[index];
+      if (!u.disembark) { boat.activePassengers.splice(index, 1); continue; }
+      const jump = u.disembark;
+      jump.elapsed += dt;
+      const t = Math.min(1, jump.elapsed / W.disembarkSeconds);
+      u.x = jump.fromX + (jump.toX - jump.fromX) * t;
+      u.z = jump.fromZ + (jump.toZ - jump.fromZ) * t;
+      u.y = jump.fromY + (jump.toY - jump.fromY) * t +
+        Math.sin(Math.PI * t) * W.disembarkJumpHeight;
+      if (t < 1) continue;
+
+      u.x = jump.toX; u.z = jump.toZ; u.y = jump.toY;
+      u.safeX = u.x; u.safeZ = u.z;
+      u.tier = board.at(Math.round(u.x), Math.round(u.z));
+      u.onRamp = false;
+      u.disembark = null;
+      u.boat = null;
+      if (u.alive) {
+        u.state = 'walking';
+        world.retarget(u);
+      }
+      boat.activePassengers.splice(index, 1);
+    }
   }
 
   function step(dt) {
@@ -158,6 +285,7 @@ export function createWaves(world) {
 
     for (const boat of boats) {
       boat.px = boat.x; boat.pz = boat.z; boat.py = boat.y;
+      let justLanded = false;
       if (!boat.landed) {
         const dx = boat.stop.x - boat.x, dz = boat.stop.z - boat.z;
         const remaining = Math.hypot(dx, dz);
@@ -165,40 +293,38 @@ export function createWaves(world) {
         if (remaining <= move) {
           boat.x = boat.stop.x; boat.z = boat.stop.z;
           boat.landed = true;
+          justLanded = true;
         } else {
           boat.x += (dx / remaining) * move;
           boat.z += (dz / remaining) * move;
         }
       }
 
-      // Passengers ride until the hull grounds, then step onto the landing tile.
-      for (const u of boat.passengers) {
-        if (!u.alive || u.state !== 'boat') continue;
-        if (boat.landed) {
-          const [li, lj] = boat.land;
-          u.x = li + (Math.random() - 0.5) * 0.5;
-          u.z = lj + (Math.random() - 0.5) * 0.5;
-          u.px = u.x; u.pz = u.z;
-          u.tier = board.at(li, lj);
-          u.onRamp = false;
-          u.y = board.topY(li, lj) - config.board.SINK;
-          u.py = u.y;
-          u.state = 'walking';
-          u.boat = null;
-          world.retarget(u);
-        } else {
-          // Bow-to-stern formation. Boat facing is local +z, so its forward
-          // vector in tile space is (sin(yaw), cos(yaw)).
-          u.x = boat.x + Math.sin(boat.facing) * u.boatOffset;
-          u.z = boat.z + Math.cos(boat.facing) * u.boatOffset;
-          u.y = 0.16;
-          u.facing = boat.facing;
+      if (!boat.landed) {
+        for (const u of boat.passengers) {
+          if (!u.alive || u.state !== 'boat') continue;
+          u.moving = false;
+          placeAboard(u, boat);
         }
+        continue;
       }
-      if (boat.landed && !boat.unloaded) {
+
+      if (justLanded) {
+        boat.unloadQueue = boat.passengers
+          .filter(u => u.alive && u.state === 'boat')
+          .sort((a, b) => b.boatOffset - a.boatOffset);
         world.events.push({ type: 'boatLanded', x: boat.x, z: boat.z });
       }
-      if (boat.landed) boat.unloaded = true;
+
+      stepDisembarks(boat, dt);
+      compactPassengers(boat, dt);
+      boat.launchTimer = Math.max(0, boat.launchTimer - dt);
+      if (boat.launchTimer <= 0 && startDisembark(boat)) {
+        boat.launchTimer = W.disembarkInterval;
+      }
+
+      const waiting = boat.unloadQueue.some(u => u.alive && u.state === 'boat');
+      boat.unloaded = boat.activePassengers.length === 0 && !waiting;
     }
   }
 

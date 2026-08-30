@@ -375,6 +375,14 @@ export function createRenderer(THREE, host, board) {
       projectionDirty = true;
     },
 
+    // Framing as a multiple of the board, BYPASSING the ZOOM_MIN/ZOOM_MAX clamp
+    // that bounds what the player may do. The arrival cutscene opens far tighter
+    // than play ever allows, which is the point of it.
+    setZoom(multiple) {
+      view.frustum = board.FRAME * multiple;
+      projectionDirty = true;
+    },
+
     // Called every frame with whether a wave is on the island. Easing lives
     // here rather than in the caller so a paused or stopped loop simply holds
     // the current light instead of snapping.
@@ -412,7 +420,13 @@ export function createRenderer(THREE, host, board) {
     follow(tileX, tileZ, worldY) {
       followX = board.px(tileX);
       followZ = board.px(tileZ);
-      followY = (worldY === undefined ? 0.7 : worldY) + C.FOLLOW_HEIGHT;
+      // FOLLOW_HEIGHT lifts him off his feet so he sits on the centre line
+      // rather than below it -- which is a SCREEN-SPACE intent, so it is scaled
+      // by how zoomed in the camera is. As a flat world offset it is 23px at the
+      // default framing and 140px at the arrival cutscene's 6x, which would put
+      // the king well below centre in the one shot that is entirely about him.
+      const scale = view.frustum / (board.FRAME * C.FRUSTUM_START);
+      followY = (worldY === undefined ? 0.7 : worldY) + C.FOLLOW_HEIGHT * scale;
     },
     // Where the camera is actually looking, for anything that needs to reason
     // about the centre of the view.

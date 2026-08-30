@@ -23,11 +23,14 @@ import { createHero } from './hero.js';
 import { createEnemies } from './enemies.js';
 import { createSeparation } from './separation.js';
 import { createCoins } from './coins.js';
+import { createIntro } from './intro.js';
 
 // CASTLE is the opening beat of every level: before any tower may be bought, the
 // king must site his castle (TDD 4). It is free and mandatory, so this is not a
 // phase the player can skip or spend their way out of.
-export const PHASE = { CASTLE: 'CASTLE', BUILD: 'BUILD', WAVE: 'WAVE', LOST: 'LOST', WON: 'WON' };
+// INTRO is the arrival cutscene and exists only on a level that authors one
+// (see sim/intro.js). Everywhere else the game still opens on CASTLE.
+export const PHASE = { INTRO: 'INTRO', CASTLE: 'CASTLE', BUILD: 'BUILD', WAVE: 'WAVE', LOST: 'LOST', WON: 'WON' };
 
 export function createWorld(board) {
   const waveTable = config.waves.levels[board.level.id];
@@ -81,7 +84,9 @@ export function createWorld(board) {
   const enemies = createEnemies(world, flowGround, combat);
   const separation = createSeparation(board, structures);
   const coins = createCoins(world);
+  const intro = createIntro(world, board, heroControl);
 
+  world.intro = intro;
   world.structures = structures;
   world.combat = combat;
   world.waves = waves;
@@ -356,11 +361,26 @@ export function createWorld(board) {
     world.survivingHouses = board.level.houses.length;
     // Back to the opening beat: the castle has to be sited again before building.
     world.phase = PHASE.CASTLE;
+    // ...and on a level that opens with the arrival, back to that.
+    if (intro.available()) { world.phase = PHASE.INTRO; intro.begin(); }
   };
 
   // ---- the step ----
   world.step = function (dt) {
     world.time += dt;
+
+    // The cutscene owns the hero completely while it runs -- it writes his
+    // position directly during the sail, then hands him to the cliff jump for
+    // the leap ashore. Nothing else steps.
+    if (world.phase === PHASE.INTRO) {
+      intro.step(dt, combat);
+      if (intro.done) {
+        world.phase = PHASE.CASTLE;
+        world.events.push({ type: 'introFinished' });
+      }
+      return;
+    }
+
     if (world.phase === PHASE.BUILD) {
       for (const t of structures.towers()) {
         if (t.building > 0) t.building = Math.max(0, t.building - dt);
@@ -374,6 +394,13 @@ export function createWorld(board) {
     }
     if (world.phase !== PHASE.WAVE) return;
 
+    // One authoritative previous transform per fixed step. Boat motion and
+    // disembark arcs happen before enemy AI, so snapshotting inside enemies.step
+    // erased those movements and left the renderer nothing to interpolate.
+    for (const u of world.units) {
+      u.px = u.x; u.pz = u.z; u.py = u.y;
+      u.pFacing = u.facing; u.pGait = u.gaitPhase;
+    }
     waves.step(dt);
     for (const u of world.units) enemies.step(u, dt);
 
@@ -434,6 +461,13 @@ export function createWorld(board) {
   // the player is deciding where things go, so they get to see what is coming.
   world.wavePreview = [];
   world.refreshPreview();
+
+  // A level that authors an intro opens on it; every other level opens on
+  // castle siting, exactly as before.
+  if (intro.available()) {
+    world.phase = PHASE.INTRO;
+    intro.begin();
+  }
 
   world.spawnEnemy = enemies.spawn;
   world.retarget = enemies.retarget;

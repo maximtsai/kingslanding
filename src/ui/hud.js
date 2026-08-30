@@ -187,6 +187,9 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   function refreshPanels() {
     const building = world.phase === PHASE.BUILD;
     const siting = world.phase === PHASE.CASTLE;
+    // Nothing is shown during the arrival: no build bar, no castle prompt, no
+    // incoming-wave badges. It is a shot, not a screen.
+    const cutscene = world.phase === PHASE.INTRO;
     const inspectingNow = building && !!inspecting;
     const over = world.phase === PHASE.LOST || world.phase === PHASE.WON;
     // Settled here rather than only in update(), so a HUD built for a new level
@@ -197,7 +200,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     // Shown whenever the player is deciding, which includes siting the castle --
     // knowing which shore the first wave lands on is exactly the information
     // that decision wants.
-    previewBox.style.display = (building || siting) ? 'flex' : 'none';
+    previewBox.style.display = (building || siting) && !cutscene ? 'flex' : 'none';
     bottom.style.display = building || siting ? 'flex' : 'none';
     buildPanel.style.display = building && !inspectingNow ? 'flex' : 'none';
     towerPanel.style.display = inspectingNow ? 'flex' : 'none';
@@ -437,6 +440,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
         const won = world.phase === PHASE.WON;
         const over = won || world.phase === PHASE.LOST;
         phaseLabel.textContent =
+          world.phase === PHASE.INTRO ? 'ARRIVAL' :
           world.phase === PHASE.CASTLE ? 'CASTLE' :
           world.phase === PHASE.BUILD ? 'BUILD' :
           world.phase === PHASE.WAVE ? 'WAVE' : world.phase;

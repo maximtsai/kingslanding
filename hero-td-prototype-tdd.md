@@ -575,6 +575,49 @@ does not move.** See P5's notes in section 18 before sizing a split wave.
 
 ## 13. Hero
 
+### The arrival (level one)
+
+Level one opens on a cutscene: the king sails in from the south-west on his own
+boat, the camera locked on him at six times the normal magnification and easing
+back to the default framing, and he leaps ashore before control passes.
+
+**It is a LEVEL property, not a game one.** A level with an `intro` block opens
+on `PHASE.INTRO`; a level without one opens on castle siting exactly as before.
+Only level one has it, because you arrive at the realm once. `restartLevel`
+replays it.
+
+Almost none of it is new machinery, and that is the point:
+
+- The boat is an ordinary record pushed into the list `waves.js` fills, so the
+  boat view draws it without knowing the cutscene exists.
+- The leap is the **cliff jump**, which already had an anticipate / airborne /
+  landing animation and a pose to go with it. It takes an optional start height
+  so it can begin at the deck instead of at a tier.
+- The camera needs no cutscene mode at all, because it already follows the king.
+  He rides the boat by having his position written each step rather than by
+  being a passenger -- passengers are enemies, drawn from the enemy rigs.
+
+`sim/intro.js` therefore owns only the ORDER of those things and the moment
+control passes.
+
+**The pull-back finishes just before the handover** (5.3s against a cutscene of
+about 5.6s), so the camera completes its move, holds a beat, and only then gives
+the player control. Running past it would leave their first frame of input still
+drifting, and freeze the framing a hair off default.
+
+**"From the bottom of the screen" is not a direction you can write down in tile
+coordinates without checking.** At the default yaw, tile (+1,+1) projects to
+almost exactly screen-down -- 60px across against 205px down -- while (-1,+1),
+which reads like "south-west" on paper, projects 357px LEFT and only 34px down.
+The first version of this cutscene used the latter and arrived from the side.
+Measure the projection; do not reason about the compass.
+
+**FOLLOW_HEIGHT had to become a screen-space quantity.** It lifts the king off
+his feet so he sits on the centre line, and as a flat world offset that is 23px
+at the default framing but 140px at the cutscene's 6x -- putting him well below
+centre in the one shot that is entirely about him. It is now scaled by the
+frustum, which leaves normal play identical and the cutscene correctly framed.
+
 ### Movement
 Tap ground to move. He paths there and stops.
 

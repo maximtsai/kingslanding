@@ -44,13 +44,21 @@ export const config = {
     PITCH: 35 * Math.PI / 180,   // TDD 14: shallower and cliffs lose screen space
     YAW_START: 0.62,
     DISTANCE: 50,                // orthographic, so this only has to clear the geometry
-    FRUSTUM_START: 2.05,         // multiples of board FRAME
+    // Default framing, in board FRAME multiples -- 1.2 means the view is about
+    // one and a fifth islands tall. Was 3, which framed the whole island with
+    // room around it: right for a fixed camera, far too wide once the camera
+    // started riding the king.
+    FRUSTUM_START: 1.2,
     // Per-60Hz-frame multiplier on the shake amplitude. 0.86 lands a jolt at
     // about a fifth of a second, which is long enough to feel and short enough
     // that two in a row do not smear into one continuous wobble.
     SHAKE_DECAY: 0.86,
-    ZOOM_MIN: 1.25,
-    ZOOM_MAX: 3.25,
+    // The player's range, moved down with the default rather than left where it
+    // was. ZOOM_MIN of 1.25 now sits ABOVE the default framing, so the first
+    // press of either zoom button would jump the camera outward before doing
+    // anything the player asked for.
+    ZOOM_MIN: 0.8,
+    ZOOM_MAX: 2.6,
     VIEW_OFFSET_Y: 0.0275,       // 25% of the original upward frame bias
     // The camera rides the king rather than the island (Thronefall), keeping him
     // centered in the visible viewport.
@@ -476,6 +484,30 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     heroSeconds: 0.20
   },
 
+  // ---- the arrival cutscene (level one only) ----
+  // Driven by an `intro` block in the level; a level without one opens straight
+  // on castle siting. See sim/intro.js.
+  intro: {
+    sailSeconds: 4.0,          // spawn to grounding
+    // Magnification at the start, relative to the default framing, and well
+    // inside ZOOM_MIN -- the cutscene is allowed past what the player may do.
+    //
+    // 3, not 6: the default framing is now two and a half times tighter than it
+    // was, so keeping the ratio would open on a shot barely taller than the king
+    // himself. This holds the opening close to what it was in absolute terms
+    // while the pull-back still travels three times its own height.
+    startZoom: 3,
+    // Slightly SHORTER than the cutscene itself (sail 4.0 + leap ~0.86 + settle
+    // 0.7 = about 5.6s), so the camera finishes its move, holds for a beat, and
+    // only then hands over. Running past the handover would leave the player's
+    // first frame of control still drifting, and freeze it a hair off the
+    // default framing.
+    zoomSeconds: 5.3,
+    deckHeight: 0.16,          // where he stands on the hull; matches passengers
+    stopOffset: 0.22,          // how far short of the landing tile the hull grounds
+    settleSeconds: 0.7         // beat after the landing before control passes
+  },
+
   // ---- evening (the wave phase) ----
   // Thronefall carries its whole day/night rhythm in the light, and pressing
   // READY here changed a badge from BUILD to WAVE and nothing else. This tints
@@ -688,6 +720,10 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     approachSeconds: 10,       // boat spawn to landfall
     spawnRadius: 9,            // tiles from board centre; beyond the island
     minSpawnArc: 0.6,          // radians between two boats' spawn angles
+    disembarkSeconds: 0.42,    // time for one passenger to jump onto the beach
+    disembarkJumpHeight: 0.28,
+    disembarkInterval: 0.25,   // launch cadence; arcs overlap without shortening
+    passengerAdvanceSpeed: 0.75,
     // TDD 11: two boats may land on the same TILE, since tiles are large, but
     // not on the same point. In tiles, continuous -- not a grid distance.
     minLandingSeparation: 1.1,

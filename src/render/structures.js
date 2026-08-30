@@ -12,7 +12,6 @@
 // claims tiles in ctx.used so the vegetation pass does not plant a tree through
 // a roof that is going to be built later.
 
-import { flattenGroup } from './flatten.js';
 import {
   STAIR_TREAD_STARTS, STAIR_HEIGHTS, STAIR_END, stairSurfaceY
 } from '../stairs.js';
@@ -51,18 +50,6 @@ export function createStructurePrefabs(ctx) {
   // did not boot at all. Put back verbatim; if the deletion was intentional the
   // correct completion is to remove those two references instead. Note it still
   // wears P.accent, which is the section 15 red-band violation on the open list.
-  function keep() {
-    const g = new THREE.Group();
-    const tower = bevelBox(0.56, 0.56, 0.82, 0.05, P.rockTop);
-    baseAO(tower, 0.72);
-    g.add(tower);
-    const band = bevelBox(0.6, 0.6, 0.1, 0.03, P.accent);
-    band.position.y = 0.76; g.add(band);
-    const cap = bevelBox(0.48, 0.48, 0.14, 0.03, P.wall);
-    cap.position.y = 0.86; g.add(cap);
-    return g;
-  }
-
   // ---------------- the castle: a 2x2 keep with four corner turrets ----------
   // Built about its own centre, so the view can drop it straight onto the middle
   // of its footprint. Deliberately the tallest thing a player can put on the
@@ -528,43 +515,19 @@ export function createStructurePrefabs(ctx) {
 
   const towerOfType = type => (TOWER_SHAPES[type] || TOWER_SHAPES.archer)();
 
-  return { house, keep, castle, arrowTower, ballistaTower, towerOfType, rockStairway };
+  return { house, castle, arrowTower, ballistaTower, towerOfType, rockStairway };
 }
 
 export function buildStructures(ctx) {
   const prefabs = createStructurePrefabs(ctx);
-  const { board, props, soft, used, K, SINK } = ctx;
-  const { at, px, topY, STAIRS, level } = board;
+  const { board, used, K } = ctx;
+  const { at, STAIRS, level } = board;
 
   // Houses are dynamic, but their tiles are spoken for from the start: nothing
   // should grow where one is going to stand.
   for (const [i, j] of level.houses) if (at(i, j)) used.add(K(i, j));
 
-  // The keep is pure scenery -- no HP, no income, not a target. Its tile is
-  // reserved in the level data so the player cannot build a tower through its
-  // roof.
-  //
-  // It is nevertheless the TALLEST thing on most islands, and section 15 is
-  // unconditional: "if a unit can be attacked, it must be visible. No
-  // exceptions." Baked into the static batch it could never be faded, because
-  // batching destroys the object references (TDD 17) -- so it is flattened to
-  // one mesh and put in the dynamic root instead. One draw call per level is
-  // the whole price of the rule applying to it.
-  const scenery = [];
-  for (const [i, j] of (level.reserved || [])) {
-    if (!at(i, j)) continue;
-    used.add(K(i, j));
-    const group = prefabs.castle();
-    const baked = flattenGroup(ctx.THREE, group);
-    const mesh = new ctx.THREE.Mesh(baked.geometry, baked.material);
-    mesh.position.set(px(i), topY(i, j) - SINK, px(j));
-    mesh.frustumCulled = false;
-    (ctx.dynamicRoot || props).add(mesh);
-    scenery.push(mesh);
-    soft.blob(px(i), topY(i, j), px(j), 1.15);
-  }
-
   STAIRS.forEach(([[li, lj], [hi, hj]]) => prefabs.rockStairway(li, lj, hi, hj));
-  prefabs.scenery = scenery;
+  prefabs.scenery = [];
   return prefabs;
 }

@@ -139,6 +139,9 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   // One tap does one of three things depending on phase and on what is under it,
   // and nothing else.
   attachGestures(view.canvas, view, (clientX, clientY) => {
+    // The cutscene is not interactive. Camera drag and zoom still work, because
+    // taking the camera away as well would read as the game having frozen.
+    if (world.phase === PHASE.INTRO) return;
     const hit = pick(clientX, clientY, rect());
     if (!hit) return;
 
@@ -172,6 +175,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   // On touch there is no hover, so the overlay only appears on the tap that
   // places -- one of several reasons TDD 14 insists this gets tested on a phone.
   const onPointerMove = e => {
+    if (world.phase === PHASE.INTRO) { ghost.hide(); return; }
     const placingCastle = world.phase === PHASE.CASTLE;
     if (!placingCastle && (world.phase !== PHASE.BUILD || !hud.selected)) { ghost.hide(); return; }
     const hit = pick(e.clientX, e.clientY, rect());
@@ -209,6 +213,17 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       // a restart, or a level change without anything having to remember to
       // re-fire it.
       view.setEvening(world.phase === PHASE.WAVE);
+
+      // The arrival opens hard on the king and pulls back to the normal framing.
+      // Driven from the cutscene's own clock rather than from a tween here, so a
+      // pause holds the shot instead of letting the camera run on without him.
+      if (world.phase === PHASE.INTRO) {
+        const I = config.intro;
+        const t = Math.min(1, world.intro.elapsed / I.zoomSeconds);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const magnification = I.startZoom + (1 - I.startZoom) * eased;
+        view.setZoom(config.camera.FRUSTUM_START / magnification);
+      }
 
       const blend = world.paused ? 1 : alpha;
 

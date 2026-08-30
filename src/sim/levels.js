@@ -68,15 +68,27 @@ export const LEVELS = {
 
     houses: [[2, 3], [7, 5], [3, 8]],
 
-    // Tiles occupied by decorative geometry. Not buildable, not damageable, not
-    // worth income -- the keep is scenery that would otherwise have a tower
-    // built through its roof.
-    reserved: [[5, 2]],
-
     // Where a landing party comes ashore. P0 uses these as walker spawns; P1
     // replaces them with boat landing resolution (TDD 11) and keeps them only as
     // the authored fallback that guarantees a wave can never fail to spawn.
     shoreFallback: [[3, 7], [4, 7], [5, 7], [4, 8], [5, 8]],
+
+    // The arrival cutscene. `from` is in tile coordinates and deliberately off
+    // the board; `land` is the beach it grounds against. A level without this
+    // block opens straight on castle siting -- only level one has it, because
+    // you arrive at the realm once.
+    //
+    // Approach bearing sits BETWEEN the two earlier attempts. At the default
+    // yaw, tile (+1,+1) projects to almost straight screen-down and (-1,+1) to
+    // almost pure screen-left; this comes in along roughly (-0.38, +0.93), so
+    // the boat enters from the lower left and travels up and to the right.
+    // Reason about the projection, never about the compass -- "south-west"
+    // written down is very nearly due LEFT once drawn.
+    //
+    // He lands on the southern point at (4,9): the house at (3,8) sits up-left
+    // of him and the stairway up-right, which is the framing the arrival was
+    // chosen for. About 4.5 tiles of sailing, for a short cutscene.
+    intro: { from: [2.3, 13.2], land: [4, 9] },
 
     heroSpawn: [4, 4]
   },
@@ -125,13 +137,10 @@ export const LEVELS = {
       [[8, 7], [7, 7]]      // east shore up onto the south cape
     ],
 
-    // On the north cape, deliberately NOT at [4,2]: a house there and the keep
-    // at [6,3] between them leave the cape with no legal 2x2, and a level whose
-    // premise is that either cape can be home has to let the castle sit on
-    // either cape. board.flatSquares(2) is the check.
+    // On the north cape, deliberately NOT at [4,2]: a house there leaves fewer
+    // legal 2x2 sites, and a level whose premise is that either cape can be home
+    // has to let the castle sit on either cape. board.flatSquares(2) is the check.
     houses: [[3, 2], [5, 7], [8, 4]],
-
-    reserved: [[6, 3]],
 
     shoreFallback: [[4, 0], [8, 2], [9, 4], [0, 5], [4, 9]],
 
@@ -186,8 +195,6 @@ export const LEVELS = {
     // [9,5] rather than [9,4] for the same reason as level two: at [9,4] the
     // house eats the only 2x2 on the whole eastern shore.
     houses: [[2, 3], [7, 6], [4, 8], [9, 5]],
-
-    reserved: [[2, 6]],
 
     shoreFallback: [[4, 0], [1, 2], [9, 3], [0, 6], [7, 8], [5, 9]],
 

@@ -197,13 +197,17 @@ export function createHero(world, flowHero) {
 
   // Only the destination is named. Where he jumps FROM is his tier, not a tile
   // looked up by rounding -- see the note on cliffNext.
-  function beginCliffJump(toI, toJ) {
+  //
+  // `fromY` overrides that for the one case where he is not standing on the
+  // terrain at all: stepping off the boat in the arrival cutscene, where the
+  // start height is the deck.
+  function beginCliffJump(toI, toJ, fromY) {
     cancelAttack();
     hero.cliffJump = {
       phase: 'anticipate', elapsed: 0,
       fromX: hero.x, fromZ: hero.z,
       toX: toI, toZ: toJ,
-      fromY: board.tierY(hero.tier) - config.board.SINK,
+      fromY: fromY === undefined ? board.tierY(hero.tier) - config.board.SINK : fromY,
       toY: board.topY(toI, toJ) - config.board.SINK
     };
     hero.jumpPhase = 'anticipate';
@@ -432,6 +436,8 @@ export function createHero(world, flowHero) {
 
   return {
     hero, step, moveTo, die,
+    // For the arrival cutscene: the same cliff jump, starting from the deck.
+    leapTo(i, j, fromY) { beginCliffJump(i, j, fromY); },
     // Called when the castle is sited. Puts him at its gate rather than inside
     // its walls, where he was previously invisible behind two metres of stone.
     setHome(i, j) {

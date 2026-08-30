@@ -104,7 +104,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   const unitView = createUnitView(THREE, board, scene.soft, scene.rigs, scene.dynamicRoot);
   const structureView = createStructureView(THREE, board, scene.prefabs, scene.soft,
                                            scene.dynamicRoot, scene.scenery);
-  const boatView = createBoatView(THREE, board, scene.kit, scene.soft, scene.rigs, scene.dynamicRoot);
+  const boatView = createBoatView(THREE, board, scene.kit, scene.rigs, scene.dynamicRoot);
   const projectileView = createProjectileView(THREE, board, scene.dynamicRoot);
   const heroView = createHeroView(THREE, board, scene.soft, scene.kingRig, scene.dynamicRoot);
   const coinView = createCoinView(THREE, board, scene.dynamicRoot);

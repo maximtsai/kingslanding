@@ -45,6 +45,44 @@ export function createStructurePrefabs(ctx) {
     return g;
   }
 
+  function ruinedHouse() {
+    const g = new THREE.Group();
+    const foundation = bevelBox(0.62, 0.48, 0.09, 0.02, P.rockSide);
+    baseAO(foundation, 0.68);
+    g.add(foundation);
+
+    // Uneven wall stumps keep the original footprint readable without looking
+    // like a shortened intact house.
+    const remnants = [
+      [-0.22, -0.15, 0.20, -0.08],
+      [0.21, -0.14, 0.13, 0.11],
+      [-0.23, 0.15, 0.12, 0.07],
+      [0.20, 0.16, 0.18, -0.12]
+    ];
+    for (const [x, z, height, turn] of remnants) {
+      const wall = bevelBox(0.15, 0.12, height, 0.015, P.wall);
+      wall.position.set(x, 0.055, z);
+      wall.rotation.y = turn;
+      baseAO(wall, 0.72);
+      g.add(wall);
+    }
+
+    // Fallen roof and framing pieces break the clean square silhouette.
+    const roofA = bevelBox(0.30, 0.17, 0.045, 0.01, P.roof);
+    roofA.position.set(-0.07, 0.09, 0.03);
+    roofA.rotation.set(0.12, 0.38, -0.16);
+    g.add(roofA);
+    const roofB = bevelBox(0.22, 0.14, 0.04, 0.008, P.roof);
+    roofB.position.set(0.16, 0.075, -0.08);
+    roofB.rotation.set(-0.08, -0.52, 0.2);
+    g.add(roofB);
+    const beam = bevelBox(0.055, 0.40, 0.045, 0, 0x6b5942);
+    beam.position.set(0.02, 0.095, 0);
+    beam.rotation.set(0.08, 0.72, 0.12);
+    g.add(beam);
+    return g;
+  }
+
   // RESTORED, not authored. A recent commit deleted this function but left the
   // two references to it -- the export below and buildStructures -- so the game
   // did not boot at all. Put back verbatim; if the deletion was intentional the
@@ -515,7 +553,7 @@ export function createStructurePrefabs(ctx) {
 
   const towerOfType = type => (TOWER_SHAPES[type] || TOWER_SHAPES.archer)();
 
-  return { house, castle, arrowTower, ballistaTower, towerOfType, rockStairway };
+  return { house, ruinedHouse, castle, arrowTower, ballistaTower, towerOfType, rockStairway };
 }
 
 export function buildStructures(ctx) {

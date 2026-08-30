@@ -15,6 +15,7 @@ import { config } from '../config.js';
 import { landingTable, SECTORS, SECTOR_HALF, wrapAngle } from './landing.js';
 
 const PASSENGER_SPACING = 0.17;
+const MAX_BOAT_UNITS = 8;
 
 export function createWaves(world) {
   const board = world.board;
@@ -111,6 +112,9 @@ export function createWaves(world) {
 
   function spawnBoat(definition) {
     const landing = definition.landing || pickLanding(definition.from);
+    if (definition.units.length > MAX_BOAT_UNITS) {
+      throw new Error(`boat has ${definition.units.length} units; maximum is ${MAX_BOAT_UNITS}`);
+    }
     // Back off along the approach so the hull touches bottom before it reaches
     // the water's edge. The march in landing.js stops at the last WATER sample,
     // which puts the bow practically on the beach.
@@ -372,7 +376,17 @@ export function createWaves(world) {
       const rolled = previewed && previewed.length === definition.boats.length
         ? previewed
         : definition.boats.map(b => ({ delay: b.delay, from: b.from, units: b.units.slice(), landing: null }));
-      pending = rolled.map(b => ({ delay: b.delay, from: b.from, units: b.units.slice(), landing: b.landing }));
+      pending = [];
+      for (const b of rolled) {
+        for (let start = 0; start < b.units.length; start += MAX_BOAT_UNITS) {
+          pending.push({
+            delay: b.delay + Math.floor(start / MAX_BOAT_UNITS) * 0.35,
+            from: b.from,
+            units: b.units.slice(start, start + MAX_BOAT_UNITS),
+            landing: start === 0 ? b.landing : null
+          });
+        }
+      }
       previewed = null;
       boats.length = 0;
       elapsed = 0;

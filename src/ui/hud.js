@@ -443,6 +443,8 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // is the question the player is actually asking -- how much of what, and from
   // where.
   const previewBox = $('wave-preview');
+  const waveStartTitle = $('wave-start-title');
+  let waveStartSerial = -1;
   const threats = [];               // live badge elements, with their bearings
   let previewSignature = '';
 
@@ -653,6 +655,13 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
       // Phase-dependent controls. TDD 7: zero tower interaction during combat.
       if (world.phase !== lastPhase) {
         lastPhase = world.phase;
+        if (world.phase === PHASE.WAVE && world.waveIndex !== waveStartSerial) {
+          waveStartSerial = world.waveIndex;
+          waveStartTitle.textContent = `WAVE ${world.waveIndex + 1}`;
+          waveStartTitle.classList.remove('show');
+          void waveStartTitle.offsetWidth;
+          waveStartTitle.classList.add('show');
+        }
         const building = world.phase === PHASE.BUILD;
         const siting = world.phase === PHASE.CASTLE;
         if (!building) { inspecting = null; setSelectedSilently(null); }

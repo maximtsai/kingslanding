@@ -111,7 +111,8 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   function kindFor(key, structure) {
     const existing = kinds.get(key);
     if (existing) return existing;
-    const prefab = structure.kind === 'house' ? prefabs.house(0, 0, 0, 1)
+    const prefab = key === 'house:ruined' ? prefabs.ruinedHouse()
+                 : structure.kind === 'house' ? prefabs.house(0, 0, 0, 1)
                  : structure.kind === 'castle' ? prefabs.castle()
                  : prefabs.towerOfType(structure.type);
     const baked = flattenGroup(THREE, prefab);
@@ -328,7 +329,8 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
 
     for (const s of world.structures.list) {
       liveStructures.add(s.id);
-      if (!s.alive) {
+      const ruinedHouse = !s.alive && s.kind === 'house';
+      if (!s.alive && !ruinedHouse) {
         const existing = bars.get(s.id);
         if (existing) existing.bar.visible = false;
         continue;
@@ -336,7 +338,8 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
 
       // An upgrade changes the type on a live record, so the key has to follow
       // the type rather than the id -- otherwise a tower keeps its old body.
-      const entry = kindFor(s.kind === 'tower' ? 'tower:' + s.type : s.kind, s);
+      const entry = kindFor(ruinedHouse ? 'house:ruined'
+        : s.kind === 'tower' ? 'tower:' + s.type : s.kind, s);
       const wx = board.px(s.x), wz = board.px(s.z);
       const wy = board.topY(s.i, s.j) - config.board.SINK;
       let build = construction.get(s.id);
@@ -405,7 +408,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       }
 
       if (blobCount < CAP) {
-        const size = s.kind === 'house' ? 1.25 : s.kind === 'castle' ? 2.5
+        const size = ruinedHouse ? 0.95 : s.kind === 'house' ? 1.25 : s.kind === 'castle' ? 2.5
                    : s.line === 'barricade' ? 0.95 : 1.1;
         position.set(wx, board.topY(s.i, s.j) + 0.012, wz);
         blobScale.set(size, size, size);
@@ -414,7 +417,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       }
 
       // Only bother with a bar on something that has actually been hurt.
-      const hurt = progress >= 1 && s.hp < s.maxHp;
+      const hurt = s.alive && progress >= 1 && s.hp < s.maxHp;
       const view = hurt ? barFor(s) : bars.get(s.id);
       if (view) {
         view.bar.visible = hurt;
@@ -489,7 +492,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
 }
 
 // --------------------------------------------------------------------- boats
-export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
+export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
   const views = new Map();
   const liveBoats = new Set();
   const { mat } = kit;
@@ -582,8 +585,62 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
 
   const oarGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.68, 4);
   oarGeo.translate(0, 0.23, 0);
-  const finialGeo = new THREE.ConeGeometry(0.038, 0.075, 5);    const foamGeo = new THREE.PlaneGeometry(1, 1);
-    const bubbleGeo = new THREE.SphereGeometry(0.035, 6, 4);
+  const finialGeo = new THREE.ConeGeometry(0.038, 0.075, 5);
+  const bubbleGeo = new THREE.SphereGeometry(0.035, 6, 4);
+
+  // Boat wakes: ONE instanced wave ring shared by every hull. The old foam was
+  // a soft white patch drawn as a separate mesh per boat -- one draw call each,
+  // and it read as a glow sticker rather than water. The wake is a ring of
+  // crests baked into a texture, and every boat's matrix carries its own pulse
+  // phase, so the fleet slowly swells and relaxes without breathing in lockstep.
+  const WAKE_CAP = 24;
+  const WAKE_WIDE = 1.32, WAKE_LONG = 2.86, WAKE_Y = 0.02;
+  const wakeTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(128, 128);
+    const d = img.data;
+    for (let y = 0; y < 128; y++) {
+      for (let x = 0; x < 128; x++) {
+        const r = Math.hypot(x - 63.5, y - 63.5) / 63.5;
+        const i = (y * 128 + x) * 4;
+        if (r >= 1) continue;
+        const crest = Math.sin(r * Math.PI * 7) * 0.5 + 0.5;
+        const fade = (1 - r) * (1 - r);
+        d[i] = d[i + 1] = d[i + 2] = 255;
+        d[i + 3] = Math.round(crest * crest * fade * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.minFilter = THREE.LinearFilter;
+    return t;
+  })();
+  const wakeGeo = new THREE.PlaneGeometry(1, 1);
+  wakeGeo.rotateX(-Math.PI / 2);
+  const wakeMat = new THREE.MeshBasicMaterial({ map: wakeTex, transparent: true, depthWrite: false, opacity: 0.5, fog: false });
+  const wakeMesh = new THREE.InstancedMesh(wakeGeo, wakeMat, WAKE_CAP);
+  wakeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  wakeMesh.frustumCulled = false;
+  wakeMesh.count = 0;
+  dynamicRoot.add(wakeMesh);
+
+  const wakeMatrix = new THREE.Matrix4();
+  const wakePos = new THREE.Vector3();
+  const wakeQuat = new THREE.Quaternion();
+  const wakeEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const wakeScale = new THREE.Vector3();
+  function writeWake(i, x, z, heading, visible, phase) {
+    const wave = Math.sin(phase);
+    wakePos.set(x, WAKE_Y + wave * config.intro.wakeBob, z);
+    wakeEuler.set(0, heading, 0);
+    wakeQuat.setFromEuler(wakeEuler);
+    const breath = 1 + wave * config.intro.wakePulseDepth;
+    wakeScale.set(visible ? WAKE_WIDE * breath : 0, 1, visible ? WAKE_LONG * breath : 0);
+    wakeMatrix.compose(wakePos, wakeQuat, wakeScale);
+    wakeMesh.setMatrixAt(i, wakeMatrix);
+  }
 
   // The finished hull, baked to ONE geometry. Nothing on the boat articulates --
   // the oars are scenery -- so the whole vessel is rigid, and flattening it
@@ -596,10 +653,6 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
     group.frustumCulled = false;
     dynamicRoot.add(group);
 
-    const foam = new THREE.Mesh(foamGeo, soft.boatFoamMat);
-    foam.rotation.x = -Math.PI / 2;
-    foam.scale.set(1.32, 2.86, 1);
-    dynamicRoot.add(foam);
     const bubbleMaterial = new THREE.MeshBasicMaterial({ color: 0xdaf4ed, transparent: true, opacity: 0.7, depthWrite: false });
     const bubbles = Array.from({ length: 5 }, () => {
       const bubble = new THREE.Mesh(bubbleGeo, bubbleMaterial);
@@ -607,7 +660,7 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
       dynamicRoot.add(bubble);
       return { mesh: bubble, age: Infinity, seed: Math.random() };
     });
-    return { group, foam, beached: 0, bubbles, bubbleClock: 0, retreat: 0, submerge: 0, sway: 0 };
+    return { group, beached: 0, bubbles, bubbleClock: 0, retreat: 0, submerge: 0, sway: 0 };
   }
 
   function buildBoat() {
@@ -672,12 +725,14 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
 
   function sync(world, alpha, elapsed) {
     liveBoats.clear();
+    let wakeCursor = 0;
     for (const boat of world.waves.boats) {
       liveBoats.add(boat.id);
       let view = views.get(boat.id);
       if (!view) { view = make(); views.set(boat.id, view); }
       const x = boat.px + (boat.x - boat.px) * alpha;
       const z = boat.pz + (boat.z - boat.pz) * alpha;
+      let wakeVisible = true;
 
       // Beaching: the bow rides up the shelf. Eased rather than snapped, and
       // exponentially so it is frame-rate independent. Render-only -- the
@@ -701,9 +756,7 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
         view.group.position.set(board.px(x + retreatX), config.waves.hullY + view.beached * GROUND.lift - view.submerge * 0.48, board.px(z + retreatZ));
         view.group.rotation.order = 'YXZ';
         view.group.rotation.set(-view.beached * GROUND_PITCH + Math.sin(view.sway * config.intro.boatSwayRate) * config.intro.boatSway * view.submerge, boat.facing, Math.sin(view.sway * config.intro.boatSwayRate * 0.73) * config.intro.boatSway * 0.7 * view.submerge);
-        view.foam.position.set(board.px(x + retreatX), 0.02, board.px(z + retreatZ));
-        view.foam.rotation.z = -boat.facing;
-        view.foam.visible = view.submerge < 0.92;
+        wakeVisible = view.submerge < 0.92;
         view.group.visible = view.submerge < 1;
         view.bubbleClock += elapsed;
         if (view.bubbleClock >= config.intro.bubbleInterval) {
@@ -722,12 +775,10 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
         }
       } else {
         view.group.visible = true;
-        view.foam.visible = true;
+        wakeVisible = true;
         view.group.position.set(board.px(x), config.waves.hullY + view.beached * GROUND.lift, board.px(z));
         view.group.rotation.order = 'YXZ';
         view.group.rotation.set(-view.beached * GROUND_PITCH + movingSway, boat.facing, movingSway * 0.65);
-        view.foam.position.set(board.px(x), 0.02, board.px(z));
-        view.foam.rotation.z = -boat.facing;
       }
       // YXZ so the pitch happens about the hull's OWN lateral axis and the
       // heading is applied after it; with the default order the two interact
@@ -735,13 +786,16 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
       // the direction of travel -- the bow.
       view.group.rotation.order = 'YXZ';
       view.group.rotation.set(-view.beached * GROUND_PITCH, boat.facing, 0);
-      view.foam.position.set(board.px(x), 0.02, board.px(z));
-      view.foam.rotation.z = -boat.facing;
+      if (wakeCursor < WAKE_CAP) {
+        writeWake(wakeCursor, board.px(x), board.px(z), boat.facing, wakeVisible, world.time * config.intro.wakePulseRate + boat.id * 0.62);
+      }
+      wakeCursor++;
     }
+    wakeMesh.count = Math.min(wakeCursor, WAKE_CAP);
+    if (wakeMesh.count) wakeMesh.instanceMatrix.needsUpdate = true;
     for (const [id, view] of views) {
       if (liveBoats.has(id)) continue;
       view.group.visible = false;
-      view.foam.visible = false;
     }
   }
 

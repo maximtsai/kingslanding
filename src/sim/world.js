@@ -171,14 +171,14 @@ export function createWorld(board) {
     waves.stop();
     combat.clear();
     world.units.length = 0;
+    // TDD 12: house income pays at the START of the build phase, for houses that
+    // survived. Settle it before repair swaps ruined houses back to their intact
+    // state, so the visual and economy transition describe the same event.
+    world.gold += world.survivingHouses * config.economy.houseIncome;
     // TDD 2: all towers repaired free including destroyed ones, at full tier.
     // Houses rebuilt. Hero to full HP, revive counter reset.
     structures.repairAll();
     heroControl.resetForWave();
-    // TDD 12: house income pays at the START of the build phase, for houses that
-    // survived. Because repairAll has already run, income is read from the count
-    // recorded when the wave ended.
-    world.gold += world.survivingHouses * config.economy.houseIncome;
     world.refreshPreview();
     world.events.push({ type: 'buildPhase' });
   }

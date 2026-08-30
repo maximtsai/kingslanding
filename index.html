@@ -186,6 +186,20 @@
   }
 
   #wave-preview { inset: 0; }
+  #wave-start-title {
+    position: absolute; left: 0; right: 0; top: 30%;
+    text-align: center; pointer-events: none; z-index: 8;
+    color: #fff; font-size: 56px; font-weight: 1000; letter-spacing: .12em;
+    text-shadow: 4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+    opacity: 0; transform: translateY(-22px);
+  }
+  #wave-start-title.show { animation: wave-start-title 3.35s ease both; }
+  @keyframes wave-start-title {
+    0% { opacity: 0; transform: translateY(-22px); }
+    12% { opacity: 1; transform: translateY(0); }
+    75% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(22px); }
+  }
   #wave-preview .label {
     position: absolute; left: 0; right: 0; top: 150px; text-align: center;
     font-size: 18px; font-weight: 900; letter-spacing: .18em;
@@ -412,6 +426,7 @@
   </div>
 
   <div class="hud" id="wave-preview"></div>
+  <div id="wave-start-title" aria-live="polite"></div>
 
   <div class="hud" id="place-confirm" style="display:none">
     <button id="btn-confirm-place" aria-label="Confirm placement"></button>

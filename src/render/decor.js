@@ -49,13 +49,6 @@ export function buildDecor(ctx) {
 
   banner(px(3.1), topY(3, 7) - SINK, px(7.1), P.accent);
 
-  // A stain that sinks into the grass, not a sticker laid on top of it.
-  const bloodMat = new THREE.MeshBasicMaterial({ color: P.blood, transparent: true, opacity: 0.81, depthWrite: false });
-  BLOOD.forEach(([i, j]) => {
-    if (!at(i, j)) return;
-    const d = new THREE.Mesh(new THREE.CircleGeometry(0.15 + rand() * 0.09, 7), bloodMat);
-    d.rotation.x = -Math.PI / 2; d.rotation.z = rand() * 6.28;
-    d.position.set(px(i) + (rand() - .5) * 0.5, topY(i, j) + 0.008, px(j) + (rand() - .5) * 0.5);
-    props.add(d);
-  });
+  // Blood stains are intentionally omitted; enemy landing spots are communicated
+  // by the incoming UI rather than permanent red marks on the terrain.
 }

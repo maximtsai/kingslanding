@@ -104,10 +104,8 @@ export function createSoftSprites(THREE, scene) {
     return t;
   }
   const blobTex = radialTex([[0, 'rgba(65,81,67,0.53)'], [0.55, 'rgba(65,81,67,0.2)'], [1, 'rgba(65,81,67,0)']]);
-  const boatFoamTex = radialTex([[0, 'rgba(255,255,255,0)'], [0.5, 'rgba(255,255,255,0.83)'], [1, 'rgba(255,255,255,0)']]);
 
   const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0.3, fog: false });
-  const boatFoamMat = new THREE.MeshBasicMaterial({ map: boatFoamTex, transparent: true, depthWrite: false, opacity: 0.73, fog: false });
 
   const quadGeo = new THREE.PlaneGeometry(1, 1);
   const group = new THREE.Group();
@@ -122,5 +120,5 @@ export function createSoftSprites(THREE, scene) {
     return m;
   }
 
-  return { group, blob, blobMat, boatFoamMat };
+  return { group, blob, blobMat };
 }

@@ -172,7 +172,7 @@ export const config = {
     // ============================ ARCHER LINE ============================
     archer: {
       name: 'Archer Tower', line: 'archer', tier: 1,
-      cost: 40, hp: 100,
+      cost: 20, hp: 100,
       range: 3.0, minRange: 0.5,
       damage: 9, arrowsPerVolley: 2, fireInterval: 1.15,
       arrowSpeed: 8.5, trajectory: 'arc',
@@ -264,7 +264,7 @@ export const config = {
     // it is always affordable.
     barricade: {
       name: 'Barricade', line: 'barricade', tier: 1, shape: 'wide',
-      cost: 18, hp: 150,
+      cost: 15, hp: 150,
       damage: 0, buildTime: 1.5,
       upgradesTo: ['bulwark', 'spearBunker']
     },
@@ -455,7 +455,7 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
 
   // ---- economy (TDD 12) ----
   economy: {
-    startGold: 60,             // one archer tower, with change; wave 1 is a real choice
+    startGold: 25,             // one archer tower, with change; wave 1 is a real choice
     houseIncome: 10,           // per surviving house, at the start of build phase
     // Coins drop where a unit died and the king picks them up by walking over
     // them. TDD 12 is explicit that this is a feel-good mechanic and a reason to
@@ -520,7 +520,12 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     boatSway: 0.13,
     boatSwayRate: 8.5,
     bubbleInterval: 0.18,
-    bubbleLifetime: 0.9
+    bubbleLifetime: 0.9,
+    // Boat wakes: one instanced wave ring per hull, each breathing at its own
+    // clock, so a landing party reads as water churning, not white stickers.
+    wakePulseRate: 1.6,        // swell-and-relax cycles per second
+    wakePulseDepth: 0.085,     // ring breathing, as a fraction of its footprint
+    wakeBob: 0.003             // world units the ring rides each swell
   },
 
   // ---- evening (the wave phase) ----
@@ -795,23 +800,10 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
       // what makes TDD 12's "exactly one T3 by the final wave" a decision
       // instead of an accident.
       one: [
-        // 12 -- one boat, one idea: they come, you shoot them.
+        // Two groups of four grunts, each carried by its own boat.
         { goldDropChance: 0.6,
-          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt'] }] },
-        // 18 -- two landings, so standing in one place stops being enough.
-        { goldDropChance: 0.6,
-          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt'] },
-                  { delay: 3, units: ['grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt'] }] },
-        // 24 -- twenty-two grunts, followed by two brutes at the end.
-        { goldDropChance: 0.6,
-          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt'] },
-                  { delay: 2.5, units: ['grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt'] },
-                  { delay: 8, units: ['brute', 'brute'] }] },
-        // 30 -- twenty-five grunts, followed by five brutes at the end.
-        { goldDropChance: 0.6,
-          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt'] },
-                  { delay: 2, units: ['grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt', 'grunt'] },
-                  { delay: 8, units: ['brute', 'brute', 'brute', 'brute', 'brute'] }] }
+          boats: [{ delay: 0, units: ['grunt', 'grunt', 'grunt', 'grunt'] },
+                  { delay: 2, units: ['grunt', 'grunt', 'grunt', 'grunt'] }] }
       ],
 
       // ---- TWO: Twin Capes. The capes are north and south. ----------------

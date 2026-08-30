@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<!-- Diorama parts. These register onto window.Diorama and never read one another
+     at load time, so the async order the runtime inserts them in does not matter;
+     diorama.js waits until all of them have arrived. -->
+<script src="./dio-palette.js"></script>
+<script src="./dio-map.js"></script>
+<script src="./dio-util.js"></script>
+<script src="./dio-kit.js"></script>
+<script src="./dio-terrain.js"></script>
+<script src="./dio-water.js"></script>
+<script src="./dio-structures.js"></script>
+<script src="./dio-nature.js"></script>
+<script src="./dio-actors.js"></script>
+<script src="./dio-king.js"></script>
+<script src="./dio-batch.js"></script>
+<style>
+  body { margin: 0; background: #0e1416; }
+  a { color: #f2c14e; text-decoration: none; }
+  a:hover { color: #ffd97a; }
+</style>
+</helmet>
+<div style="position:relative;width:720px;height:1280px;overflow:hidden;background:#6eb4c4;font-family:Outfit,system-ui,sans-serif;user-select:none">
+
+  <x-import component-from-global-scope="island-diorama" from="./diorama.js"
+    saturation="{{ saturation }}" contrast="{{ contrast }}" vignette="{{ vignette }}"
+    grid="{{ grid }}"
+    style="position:absolute;inset:0;width:720px;height:1280px" hint-size="720px,1280px"></x-import>
+
+  <div style="position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:28px 28px 0;pointer-events:none">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.86);border-radius:999px;padding:8px 18px 8px 10px">
+        <div style="width:26px;height:26px;border-radius:50%;background:#c2352f"></div>
+        <div style="font-size:20px;font-weight:800;letter-spacing:.06em;color:#2a2a30">WAVE 3</div>
+        <div style="font-size:16px;font-weight:600;color:#8a8a92">/ 7</div>
+      </div>
+      <div style="display:flex;gap:5px;padding-left:6px">
+        <div style="width:34px;height:6px;border-radius:3px;background:#c2352f"></div>
+        <div style="width:34px;height:6px;border-radius:3px;background:#c2352f"></div>
+        <div style="width:34px;height:6px;border-radius:3px;background:#c2352f"></div>
+        <div style="width:34px;height:6px;border-radius:3px;background:rgba(255,255,255,.6)"></div>
+        <div style="width:34px;height:6px;border-radius:3px;background:rgba(255,255,255,.6)"></div>
+        <div style="width:34px;height:6px;border-radius:3px;background:rgba(255,255,255,.6)"></div>
+        <div style="width:34px;height:6px;border-radius:3px;background:rgba(255,255,255,.6)"></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;pointer-events:auto">
+      <div onClick="{{ toggleSpin }}" style="width:56px;height:56px;border-radius:18px;background:rgba(255,255,255,.86);display:grid;place-items:center;font-size:22px;font-weight:800;color:#2a2a30;cursor:pointer" style-hover="background:#ffffff">↻</div>
+      <div onClick="{{ zoomIn }}" style="width:56px;height:56px;border-radius:18px;background:rgba(255,255,255,.86);display:grid;place-items:center;font-size:26px;font-weight:600;color:#2a2a30;cursor:pointer" style-hover="background:#ffffff">+</div>
+      <div onClick="{{ zoomOut }}" style="width:56px;height:56px;border-radius:18px;background:rgba(255,255,255,.86);display:grid;place-items:center;font-size:26px;font-weight:600;color:#2a2a30;cursor:pointer" style-hover="background:#ffffff">–</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;height:404px;background:linear-gradient(180deg,rgba(26,41,47,0) 0%,rgba(22,36,42,.61) 22%,#162228 46%);pointer-events:none"></div>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;padding:0 28px 34px;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:center;gap:16px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:16px 20px">
+      <div style="width:52px;height:52px;border-radius:16px;background:#c2352f;display:grid;place-items:center;flex:none">
+        <div style="width:22px;height:12px;background:#f2c14e;clip-path:polygon(0 100%,0 20%,20% 55%,40% 0,50% 55%,60% 0,80% 55%,100% 20%,100% 100%)"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div style="font-size:19px;font-weight:700;color:#f6f7f3;letter-spacing:.02em">The King</div>
+          <div style="font-size:14px;font-weight:600;color:#9fb3b8">86 / 100</div>
+        </div>
+        <div style="height:8px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden">
+          <div style="width:86%;height:100%;background:#f2c14e"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:18px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.13)">
+        <div style="width:38px;height:38px;border-radius:50%;border:3px solid #f2c14e"></div>
+        <div style="font-size:14px;font-weight:600;color:#e7eeef;letter-spacing:.04em">VOLLEY</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:18px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.13)">
+        <div style="width:38px;height:38px;background:#c2352f;clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%)"></div>
+        <div style="font-size:14px;font-weight:600;color:#e7eeef;letter-spacing:.04em">RALLY</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:18px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.13)">
+        <div style="width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.22)"></div>
+        <div style="font-size:14px;font-weight:600;color:#e7eeef;letter-spacing:.04em">HOLD</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:13px;letter-spacing:.16em;color:rgba(231,238,239,.45);font-weight:600">DRAG TO ORBIT · SCROLL TO ZOOM</div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:720,&quot;height&quot;:1280},&quot;saturation&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1.02,&quot;min&quot;:0.6,&quot;max&quot;:1.6,&quot;step&quot;:0.02,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Post&quot;},&quot;contrast&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1.05,&quot;min&quot;:0.85,&quot;max&quot;:1.35,&quot;step&quot;:0.01,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Post&quot;},&quot;vignette&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:0.46,&quot;min&quot;:0,&quot;max&quot;:1,&quot;step&quot;:0.05,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Post&quot;},&quot;grid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Debug&quot;}}">
+class Component extends DCLogic {
+  state = { spin: false };
+  el() { return document.querySelector('island-diorama'); }
+  renderVals() {
+    return {
+      saturation: String(this.props.saturation ?? 1.02),
+      contrast: String(this.props.contrast ?? 1.05),
+      vignette: String(this.props.vignette ?? 0.46),
+      grid: String(this.props.grid ?? true),
+      toggleSpin: () => { console.log('rotate'); const e = this.el(); e && e.rotate && e.rotate(Math.PI / 4); },
+      zoomIn: () => { const e = this.el(); e && e.zoom && e.zoom(-4); },
+      zoomOut: () => { const e = this.el(); e && e.zoom && e.zoom(4); }
+    };
+  }
+}
+
+</script>
+</body>
+</html>

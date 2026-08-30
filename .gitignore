@@ -1,0 +1,13 @@
+# Local tool metadata
+.claude/
+.freebuff/
+
+# Distribution output
+/dist/
+
+# Executable files
+*.exe
+*.exe.*
+
+# Uploaded files
+uploads/

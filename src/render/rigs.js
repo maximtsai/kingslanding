@@ -66,14 +66,14 @@ export function createRigFactory(THREE, kit, P) {
 
   // Geometry shared across every figure of a type. Built once.
   const swordShape = new THREE.Shape();
-  swordShape.moveTo(-0.05, -0.22);
-  swordShape.lineTo(-0.075, 0.11);
-  swordShape.lineTo(0, 0.28);
-  swordShape.lineTo(0.075, 0.11);
-  swordShape.lineTo(0.05, -0.22);
+  swordShape.moveTo(-0.038, -0.22);
+  swordShape.lineTo(-0.055, 0.11);
+  swordShape.lineTo(0, 0.245);
+  swordShape.lineTo(0.055, 0.11);
+  swordShape.lineTo(0.038, -0.22);
   swordShape.closePath();
   const swordBladeGeo = new THREE.ExtrudeGeometry(swordShape, {
-    depth: 0.024, bevelEnabled: false
+    depth: 0.018, bevelEnabled: false
   });
   swordBladeGeo.translate(0, 0, -0.012);
   const swordGripGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.14, 5);
@@ -89,7 +89,7 @@ export function createRigFactory(THREE, kit, P) {
   const clubHeadGeo = new THREE.BoxGeometry(0.115, 0.13, 0.115);
   const woodMat = mat(0xc7b58a);
   const darkWoodMat = mat(0x6f5a3c);
-  const ironMat = mat(0x4e535a);
+  const ironMat = mat(0xd9e1e6);
 
   function build(type) {
     const T = TYPES[type] || TYPES.grunt;

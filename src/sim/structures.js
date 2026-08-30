@@ -24,8 +24,7 @@ export function createStructures(board, flow) {
   // Everything downstream addresses it through its centre and half-extent, so a
   // 1x1 tower and a 2x2 castle need one code path rather than two.
   function add(record, span) {
-    record.span = span || 1;
-    record.halfExtent = record.span / 2;
+    record.span = span || 1;      record.halfExtent = record.span / 2;
     // Centre of the footprint. For a 1x1 that is just the tile.
     record.x = record.i + (record.span - 1) / 2;
     record.z = record.j + (record.span - 1) / 2;

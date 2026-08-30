@@ -582,8 +582,8 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
 
   const oarGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.68, 4);
   oarGeo.translate(0, 0.23, 0);
-  const finialGeo = new THREE.ConeGeometry(0.038, 0.075, 5);
-  const foamGeo = new THREE.PlaneGeometry(1, 1);
+  const finialGeo = new THREE.ConeGeometry(0.038, 0.075, 5);    const foamGeo = new THREE.PlaneGeometry(1, 1);
+    const bubbleGeo = new THREE.SphereGeometry(0.035, 6, 4);
 
   // The finished hull, baked to ONE geometry. Nothing on the boat articulates --
   // the oars are scenery -- so the whole vessel is rigid, and flattening it
@@ -600,7 +600,14 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
     foam.rotation.x = -Math.PI / 2;
     foam.scale.set(1.32, 2.86, 1);
     dynamicRoot.add(foam);
-    return { group, foam, beached: 0 };
+    const bubbleMaterial = new THREE.MeshBasicMaterial({ color: 0xdaf4ed, transparent: true, opacity: 0.7, depthWrite: false });
+    const bubbles = Array.from({ length: 5 }, () => {
+      const bubble = new THREE.Mesh(bubbleGeo, bubbleMaterial);
+      bubble.visible = false;
+      dynamicRoot.add(bubble);
+      return { mesh: bubble, age: Infinity, seed: Math.random() };
+    });
+    return { group, foam, beached: 0, bubbles, bubbleClock: 0, retreat: 0, submerge: 0, sway: 0 };
   }
 
   function buildBoat() {
@@ -675,17 +682,53 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
       // Beaching: the bow rides up the shelf. Eased rather than snapped, and
       // exponentially so it is frame-rate independent. Render-only -- the
       // simulation has no opinion about how a hull sits.
-      const target = boat.landed ? 1 : 0;
+      const landed = boat.introPhase === 'grounded' || boat.introPhase === 'retreating';
+      const target = boat.landed || landed ? 1 : 0;
+      // Boats gently rock while underway, but settle completely once grounded.
+      const movingSway = boat.landed || landed ? 0 : Math.sin((world.time + boat.id * 0.17) * config.intro.boatSwayRate) * config.intro.boatSway * 0.35;
       const k = elapsed ? 1 - Math.exp(-elapsed / GROUND.seconds) : 1;
       view.beached += (target - view.beached) * k;
 
-      view.group.visible = true;
-      view.foam.visible = true;
-      view.group.position.set(
-        board.px(x),
-        config.waves.hullY + view.beached * GROUND.lift,
-        board.px(z)
-      );
+      if (boat.introPhase === 'retreating') {
+        view.retreat = Math.min(1, view.retreat + elapsed / config.intro.boatSlideSeconds);
+        view.submerge = Math.min(1, view.submerge + elapsed / config.intro.boatSubmergeSeconds);
+        view.sway += elapsed;
+        const eased = view.retreat * view.retreat * (3 - 2 * view.retreat);
+        // Slide back toward the water: the boat's travel direction points toward
+        // shore, so the departure motion uses the opposite bearing.
+        const retreatX = -Math.sin(boat.facing) * config.intro.boatSlideBack * eased;
+        const retreatZ = -Math.cos(boat.facing) * config.intro.boatSlideBack * eased;
+        view.group.position.set(board.px(x + retreatX), config.waves.hullY + view.beached * GROUND.lift - view.submerge * 0.48, board.px(z + retreatZ));
+        view.group.rotation.order = 'YXZ';
+        view.group.rotation.set(-view.beached * GROUND_PITCH + Math.sin(view.sway * config.intro.boatSwayRate) * config.intro.boatSway * view.submerge, boat.facing, Math.sin(view.sway * config.intro.boatSwayRate * 0.73) * config.intro.boatSway * 0.7 * view.submerge);
+        view.foam.position.set(board.px(x + retreatX), 0.02, board.px(z + retreatZ));
+        view.foam.rotation.z = -boat.facing;
+        view.foam.visible = view.submerge < 0.92;
+        view.group.visible = view.submerge < 1;
+        view.bubbleClock += elapsed;
+        if (view.bubbleClock >= config.intro.bubbleInterval) {
+          view.bubbleClock = 0;
+          const bubble = view.bubbles.find(item => item.age === Infinity);
+          if (bubble) { bubble.age = 0; bubble.life = config.intro.bubbleLifetime * (0.75 + bubble.seed * 0.4); bubble.mesh.visible = true; bubble.mesh.position.set(board.px(x + retreatX + (bubble.seed - 0.5) * 0.3), config.waves.hullY - view.submerge * 0.3, board.px(z + retreatZ + (bubble.seed - 0.5) * 0.3)); }
+        }
+        for (const bubble of view.bubbles) {
+          if (bubble.age === Infinity) continue;
+          bubble.age += elapsed;
+          const bt = Math.min(1, bubble.age / bubble.life);
+          bubble.mesh.position.y += elapsed * 0.18;
+          bubble.mesh.scale.setScalar(0.7 + bt * 1.2);
+          bubble.mesh.material.opacity = (1 - bt) * 0.7;
+          if (bt >= 1) { bubble.age = Infinity; bubble.mesh.visible = false; }
+        }
+      } else {
+        view.group.visible = true;
+        view.foam.visible = true;
+        view.group.position.set(board.px(x), config.waves.hullY + view.beached * GROUND.lift, board.px(z));
+        view.group.rotation.order = 'YXZ';
+        view.group.rotation.set(-view.beached * GROUND_PITCH + movingSway, boat.facing, movingSway * 0.65);
+        view.foam.position.set(board.px(x), 0.02, board.px(z));
+        view.foam.rotation.z = -boat.facing;
+      }
       // YXZ so the pitch happens about the hull's OWN lateral axis and the
       // heading is applied after it; with the default order the two interact
       // and the boat yaws as it tilts. Negative pitch lifts local +z, which is
@@ -757,6 +800,9 @@ export function createProjectileView(THREE, board, dynamicRoot) {
       const x = p.px + (p.x - p.px) * alpha;
       const z = p.pz + (p.z - p.pz) * alpha;
       const y = p.py + (p.y - p.py) * alpha;
+      // Embedded and grounded arrows quickly settle to half size instead of
+      // remaining full-length in the target or terrain.
+      const impactScale = p.state === 'grounded' || p.state === 'embedded' ? 0.5 : 1;
 
       // Stored direction survives grounded and embedded states, where frame-to-
       // frame displacement is zero or follows the victim instead of the arrow.
@@ -765,7 +811,8 @@ export function createProjectileView(THREE, board, dynamicRoot) {
       euler.set(-Math.atan2(dy, ground), Math.atan2(dx, dz), 0, 'YXZ');
       quaternion.setFromEuler(euler);
       position.set(board.px(x), y, board.px(z));
-      matrix.compose(position, quaternion, one);
+      const arrowScale = new THREE.Vector3(impactScale, impactScale, impactScale);
+      matrix.compose(position, quaternion, arrowScale);
       for (const mesh of meshes) mesh.setMatrixAt(count, matrix);
       count++;
     }
@@ -1183,7 +1230,10 @@ export function createGhostView(THREE, board, dynamicRoot) {
       // this HUD uses for "yours" and "spendable", and against green grass it
       // separates far better than a white wash does.
       marker.material.color.setHex(valid ? 0xf2c14e : 0xc2352f);
-      marker.material.opacity = valid ? 0.42 : 0.5;
+      // Keep invalid placement readable through a faint fill while retaining
+      // the stronger border that communicates the placement boundary.
+      marker.material.opacity = valid ? 0.42 : 0.20;
+      outline.material.opacity = 0.5;
       outline.material.color.setHex(valid ? 0x14202a : 0x3d0f0c);
 
       if (!valid || !probe) { coverage.visible = false; return; }

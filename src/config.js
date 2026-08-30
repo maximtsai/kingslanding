@@ -337,7 +337,8 @@ export const config = {
       attackRange: 0.90,
       aggroRange: 1.45,        // TDD 10: always slightly greater than attackRange
       attentionRange: 1.95,    // ...and slightly greater again, to stop a retaliation
-      pushRadius: 0.18,        //    target flickering at the aggro boundary
+      pushRadius: 0.10,        //    tighter unit-to-unit clustering
+      hitRadius: 0.34,          // slightly smaller combat footprint
       hitRadius: 0.40,
       gold: 4                  // P1 stand-in for the coin drops of TDD 12
     },
@@ -365,8 +366,8 @@ export const config = {
       ranged: true,
       trajectory: 'arc',       // lobs, so cliffs do not protect a tower from it
       projectileSpeed: 7.5,
-      pushRadius: 0.17,
-      hitRadius: 0.38,
+      pushRadius: 0.10,
+      hitRadius: 0.32,
       gold: 5
     },
 
@@ -381,8 +382,8 @@ export const config = {
       attackRange: 1.00,
       aggroRange: 1.55,
       attentionRange: 2.05,
-      pushRadius: 0.26,        // takes up real room in a crowd
-      hitRadius: 0.52,
+      pushRadius: 0.14,        // tighter unit-to-unit clustering
+      hitRadius: 0.44,
       gold: 14
     }
   },
@@ -508,7 +509,16 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     // top of a lid.
     deckHeight: 0.041,
     stopOffset: 0.30,          // how far short of the landing tile the hull grounds
-    settleSeconds: 0.7         // beat after the landing before control passes
+    settleSeconds: 0.7,        // beat after the landing before control passes
+    // The intro boat stays grounded until the king is clear, then reverses and sinks.
+    boatGroundSeconds: 0.55,
+    boatSlideBack: 0.465,
+    boatSlideSeconds: 1.375,
+    boatSubmergeSeconds: 6,
+    boatSway: 0.13,
+    boatSwayRate: 8.5,
+    bubbleInterval: 0.18,
+    bubbleLifetime: 0.9
   },
 
   // ---- evening (the wave phase) ----

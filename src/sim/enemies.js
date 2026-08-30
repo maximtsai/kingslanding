@@ -190,6 +190,13 @@ export function createEnemies(world, flowGround, combat) {
     if (!u.alive) { u.moving = false; return; }
 
     const spec = config.enemies[u.type];
+    // Grunts cannot attack targets one full terrain tier above them. Keep this
+    // separate from movement so they may still approach the higher ground, but
+    // their melee strike is never applied across the elevation gap.
+    const oneTierHigher = target => {
+      const targetTier = target.isStructure ? target.tier : target.tier;
+      return targetTier - u.tier >= 1;
+    };
 
     if (u.state === 'boat') {
       if (u.disembark) u.moving = false;
@@ -213,7 +220,8 @@ export function createEnemies(world, flowGround, combat) {
     const from = spec.ranged ? muzzleOf(u) : null;
     const inRange = spec.ranged
       ? combat.canHit(from, engaged, spec)
-      : reach(u, engaged) <= spec.attackRange;
+      : reach(u, engaged) <= spec.attackRange &&
+        !(u.type === 'grunt' && oneTierHigher(engaged));
 
     if (inRange) {
       // TDD 10: an archer stops at range and fires. It does not close to melee,
@@ -336,6 +344,7 @@ export function createEnemies(world, flowGround, combat) {
       const reach = spec.ranged
         ? spec.range
         : u.hitRadius + config.unit.hitRadius + 0.35;
+      if (u.type === 'grunt' && hero.tier - u.tier >= 1) continue;
       if (Math.hypot(hero.x - u.x, hero.z - u.z) > reach) continue;
       u.heroCooldown -= dt;
       if (u.heroCooldown <= 0) {

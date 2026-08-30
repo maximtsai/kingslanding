@@ -62,7 +62,17 @@ export function createWorld(board) {
   };
   const isHeroBlocked = (i, j) => {
     const s = structures.at(i, j);
-    return s && s.alive && !(s.kind === 'tower' && (s.type === 'archer' || s.type === 'barricade')) ? s : null;
+    if (!s || !s.alive) return null;
+    // Houses remain solid to enemies, but use a smaller hero-only blocking
+    // footprint: the king can pass close to their edges without being routed
+    // through the house itself.
+    if (s.kind === 'house') {
+      const edge = 0.045;
+      const localX = Math.abs(world.hero.x - s.x);
+      const localZ = Math.abs(world.hero.z - s.z);
+      if (localX > 0.5 - edge || localZ > 0.5 - edge) return null;
+    }
+    return s.kind === 'tower' && (s.type === 'archer' || s.type === 'barricade') ? null : s;
   };
 
   // Ground rules for everything that walks.

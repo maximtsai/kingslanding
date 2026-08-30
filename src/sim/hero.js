@@ -88,8 +88,16 @@ export function createHero(world, flowHero) {
   // actually route to.
   function blockedForHero(i, j) {
     const blocker = world.structures.at(i, j);
-    return !!blocker &&
-      !(blocker.kind === 'tower' && (blocker.type === 'archer' || blocker.type === 'barricade'));
+    if (!blocker || !blocker.alive) return false;
+    // Match the hero flow field: houses reserve only their central footprint,
+    // leaving a narrow walkable margin around the outside for the king.
+    if (blocker.kind === 'house') {
+      const margin = 0.045;
+      const nearEdge = Math.abs(hero.x - blocker.x) > 0.5 - margin ||
+        Math.abs(hero.z - blocker.z) > 0.5 - margin;
+      if (nearEdge) return false;
+    }
+    return !(blocker.kind === 'tower' && (blocker.type === 'archer' || blocker.type === 'barricade'));
   }
 
   // One destination, taken literally. Fails rather than searching -- the search

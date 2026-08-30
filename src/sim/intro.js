@@ -24,7 +24,7 @@ export function createIntro(world, board, heroControl) {
   const hero = heroControl.hero;
 
   let boat = null;
-  let state = 'idle';           // idle -> sailing -> leaping -> settling -> done
+  let state = 'idle';           // idle -> sailing -> grounded -> leaping -> retreating -> done
   let stateTime = 0;
   let total = 0;                // whole-cutscene clock, for the camera pull-back
 
@@ -49,6 +49,7 @@ export function createIntro(world, board, heroControl) {
       stop, land: [li, lj],
       speed: distance / C.sailSeconds,
       landed: false,
+      introPhase: 'approach',
       // Marked unloaded from the outset. A boat that never unloads holds a wave
       // open forever (waves.complete), and this one is never part of a wave.
       unloaded: true,
@@ -106,8 +107,17 @@ export function createIntro(world, board, heroControl) {
       hero.pFacing = hero.facing;
 
       if (boat.landed) {
-        // The existing cliff jump, told to start from the deck rather than from
-        // a tier. That is the whole "jumping off animation".
+        boat.introPhase = 'grounded';
+        state = 'grounded';
+        stateTime = 0;
+      }
+      return;
+    }
+
+    if (state === 'grounded') {
+      // Let the hull settle visibly into the shore before the king disembarks.
+      ride();
+      if (stateTime >= C.boatGroundSeconds) {
         heroControl.leapTo(boat.land[0], boat.land[1], C.deckHeight);
         state = 'leaping';
         stateTime = 0;
@@ -121,7 +131,11 @@ export function createIntro(world, board, heroControl) {
     heroControl.step(dt, combat);
 
     if (state === 'leaping') {
-      if (!hero.cliffJump) { state = 'settling'; stateTime = 0; }
+      if (!hero.cliffJump) {
+        state = 'settling';
+        stateTime = 0;
+        boat.introPhase = 'retreating';
+      }
       return;
     }
     if (state === 'settling' && stateTime >= C.settleSeconds) state = 'done';

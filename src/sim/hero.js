@@ -97,6 +97,12 @@ export function createHero(world, flowHero) {
         Math.abs(hero.z - blocker.z) > 0.5 - margin;
       if (nearEdge) return false;
     }
+    if (blocker.kind === 'castle') {
+      const margin = 0.04;
+      const nearEdge = Math.abs(hero.x - blocker.x) > blocker.halfExtent - margin ||
+        Math.abs(hero.z - blocker.z) > blocker.halfExtent - margin;
+      if (nearEdge) return false;
+    }
     return !(blocker.kind === 'tower' && (blocker.type === 'archer' || blocker.type === 'barricade'));
   }
 

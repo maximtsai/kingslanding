@@ -871,7 +871,9 @@ export function createCoinView(THREE, board, dynamicRoot) {
       // The hop is a settle, not a bounce: it eases out of the body and lands.
       const lift = 0.12 + Math.sin(coin.hop * Math.PI) * 0.22;
       position.set(board.px(x), board.groundYAt(x, z) + lift, board.px(z));
-      euler.set(0, world.time * 3.2 + coin.id, 0.35);
+      // Coins stand upright and spin around their vertical axis, making the
+      // pickup readable from every camera angle instead of lying flat.
+      euler.set(Math.PI / 2, world.time * 3.2 + coin.id, 0);
       quaternion.setFromEuler(euler);
       matrix.compose(position, quaternion, one);
       mesh.setMatrixAt(count++, matrix);

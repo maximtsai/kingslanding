@@ -337,7 +337,7 @@ export const config = {
       attackRange: 0.90,
       aggroRange: 1.45,        // TDD 10: always slightly greater than attackRange
       attentionRange: 1.95,    // ...and slightly greater again, to stop a retaliation
-      pushRadius: 0.10,        //    tighter unit-to-unit clustering
+      pushRadius: 0.08,        //    tighter unit-to-unit clustering
       hitRadius: 0.34,          // slightly smaller combat footprint
       hitRadius: 0.40,
       gold: 4                  // P1 stand-in for the coin drops of TDD 12
@@ -366,7 +366,7 @@ export const config = {
       ranged: true,
       trajectory: 'arc',       // lobs, so cliffs do not protect a tower from it
       projectileSpeed: 7.5,
-      pushRadius: 0.10,
+      pushRadius: 0.08,
       hitRadius: 0.32,
       gold: 5
     },
@@ -911,8 +911,7 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     // TDD 8: the gap between these two is a feel decision, not a bug.
     // Defaults; each enemy type overrides them above. TDD 8: the gap between
     // the two radii is a feel decision, not a bug -- units pack tightly and are
-    // still easy to hit.
-    pushRadius: 0.18,        // unit-vs-unit separation only
+    // still easy to hit.      pushRadius: 0.08,        // unit-vs-unit separation only
     hitRadius: 0.40,         // incoming projectiles and melee
     arriveEpsilon: 0.10,     // how close counts as reaching a tile centre
     stairUpSpeed: 0.40       // fraction of normal speed while climbing stairs

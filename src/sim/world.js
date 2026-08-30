@@ -72,6 +72,12 @@ export function createWorld(board) {
       const localZ = Math.abs(world.hero.z - s.z);
       if (localX > 0.5 - edge || localZ > 0.5 - edge) return null;
     }
+    if (s.kind === 'castle') {
+      const edge = 0.04;
+      const localX = Math.abs(world.hero.x - s.x);
+      const localZ = Math.abs(world.hero.z - s.z);
+      if (localX > s.halfExtent - edge || localZ > s.halfExtent - edge) return null;
+    }
     return s.kind === 'tower' && (s.type === 'archer' || s.type === 'barricade') ? null : s;
   };
 

@@ -61,7 +61,12 @@ export function createIntro(world, board, heroControl) {
     hero.goal = null; hero.field = null; hero.waypoint = null;
     hero.cliffJump = null; hero.jumpPhase = null;
     ride();
+    // Keep interpolation endpoints synchronized with the cutscene pose. The
+    // render loop blends px/pz/py into x/z/y, so stale endpoints can make the
+    // king briefly snap backward while the boat is moving.
     hero.px = hero.x; hero.pz = hero.z; hero.py = hero.y;
+    hero.pFacing = hero.facing;
+
 
     state = 'sailing';
     stateTime = 0;
@@ -96,6 +101,9 @@ export function createIntro(world, board, heroControl) {
         boat.z += (dz / remaining) * move;
       }
       ride();
+      // The hero is a passenger during the intro; normal movement is suspended,
+      // so keep both simulation and presentation facing fixed to the boat.
+      hero.pFacing = hero.facing;
 
       if (boat.landed) {
         // The existing cliff jump, told to start from the deck rather than from

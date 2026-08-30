@@ -494,44 +494,176 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
   const liveBoats = new Set();
   const { mat } = kit;
 
-  // Same longship hull the diorama beaches on the shore, rebuilt here because
-  // these ones move.
-  const hullGeo = new THREE.BufferGeometry();
-  hullGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, -0.66, -0.23, 0, -0.34, -0.23, 0, 0.34, 0, 0, 0.66,
-    0, 0.18, -0.66, -0.23, 0.1, -0.34, -0.23, 0.1, 0.34, 0, 0.18, 0.66
-  ], 3));
-  hullGeo.setIndex([0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7, 4, 5, 6, 4, 6, 7]);
-  hullGeo.computeVertexNormals();
+  // ---- the hull ------------------------------------------------------------
+  //
+  // ONE LOFTED SOLID, and a HOLLOW one. The first version was an eight-vertex
+  // shell with a closed top, which caused every complaint about it at once: the
+  // floor and benches were drawn INSIDE a sealed lid and never seen, the
+  // gunwales floated above that lid with nothing joining them to it, and the
+  // stem posts reached y=0.4 with finials hanging past the ends of the boat.
+  // It read as a pile of parts because that is what it was.
+  //
+  // The second version fixed the assembly but capped it with a flat deck, so it
+  // read as a slab: a boat is a BOWL, and the eye wants to see down into it.
+  // Each section therefore carries four heights, not two --
+  //
+  //   keel    the outside of the bottom, below the waterline amidships
+  //   sheer   the rim
+  //   floor   the inside of the bottom, well below the rim
+  //   w/wi    outer and inner half-beam, the gap between them being the planking
+  //
+  // -- and consecutive sections are skinned with an outer side, a bottom, a rim
+  // band, an inner side and a floor. The interior pinches to nothing at the two
+  // tips because `wi` clamps at zero there, which closes the ends without
+  // needing a special case.
+  const SECTIONS = [
+    { z: -0.72, w: 0.026, keel:  0.062, sheer: 0.190, floor: 0.150 },
+    { z: -0.46, w: 0.155, keel:  0.006, sheer: 0.122, floor: 0.060 },
+    { z: -0.16, w: 0.230, keel: -0.022, sheer: 0.100, floor: 0.028 },
+    { z:  0.16, w: 0.230, keel: -0.022, sheer: 0.100, floor: 0.028 },
+    { z:  0.46, w: 0.155, keel:  0.006, sheer: 0.122, floor: 0.060 },
+    { z:  0.72, w: 0.026, keel:  0.062, sheer: 0.190, floor: 0.150 }
+  ];
+  const WALL = 0.030;           // planking thickness at the rim
+  const KEEL = 0.42;            // keel half-beam, as a fraction of the rim's
+  const FLOORW = 0.55;          // floor half-beam, as a fraction of the inner rim
+
+  const inner = s => Math.max(0, s.w - WALL);
+
+  // Where the interior floor sits at any point along the hull, so anything
+  // standing in the boat is placed from the numbers the boat was built from.
+  function sectionAt(z) {
+    for (let k = 0; k < SECTIONS.length - 1; k++) {
+      const a = SECTIONS[k], b = SECTIONS[k + 1];
+      if (z < a.z || z > b.z) continue;
+      const t = (z - a.z) / (b.z - a.z);
+      const lerp = key => a[key] + (b[key] - a[key]) * t;
+      return { w: lerp('w'), keel: lerp('keel'), sheer: lerp('sheer'), floor: lerp('floor') };
+    }
+    return SECTIONS[z < 0 ? 0 : SECTIONS.length - 1];
+  }
+
+  // Built NON-INDEXED so no vertex is shared between faces: computeVertexNormals
+  // then produces one hard normal per triangle, which is where the faceted look
+  // comes from (see kit.js -- MeshLambertMaterial ignores flatShading).
+  const hullGeo = (() => {
+    const pos = [];
+    const tri = (a, b, c) => pos.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]);
+    const quad = (a, b, c, d) => { tri(a, b, c); tri(a, c, d); };
+    const OL = s => [-s.w, s.sheer, s.z];                    // outer rim
+    const OR = s => [ s.w, s.sheer, s.z];
+    const IL = s => [-inner(s), s.sheer, s.z];               // inner rim
+    const IR = s => [ inner(s), s.sheer, s.z];
+    const FL = s => [-inner(s) * FLOORW, s.floor, s.z];      // floor edge
+    const FR = s => [ inner(s) * FLOORW, s.floor, s.z];
+    const BL = s => [-s.w * KEEL, s.keel, s.z];              // keel
+    const BR = s => [ s.w * KEEL, s.keel, s.z];
+
+    for (let k = 0; k < SECTIONS.length - 1; k++) {
+      const a = SECTIONS[k], b = SECTIONS[k + 1];
+      quad(BL(a), BL(b), OL(b), OL(a));    // port topside, outside
+      quad(BR(a), OR(a), OR(b), BR(b));    // starboard topside, outside
+      quad(BL(a), BR(a), BR(b), BL(b));    // bottom
+      quad(OL(a), OL(b), IL(b), IL(a));    // rim band, port
+      quad(IR(a), IR(b), OR(b), OR(a));    // rim band, starboard
+      quad(IL(a), IL(b), FL(b), FL(a));    // port topside, inside
+      quad(FR(b), IR(b), IR(a), FR(a));    // starboard topside, inside
+      quad(FL(a), FL(b), FR(b), FR(a));    // floor
+    }
+    const bow = SECTIONS[0], stern = SECTIONS[SECTIONS.length - 1];
+    quad(BL(bow), OL(bow), OR(bow), BR(bow));
+    quad(BL(stern), BR(stern), OR(stern), OL(stern));
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  })();
+
   const oarGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.68, 4);
+  oarGeo.translate(0, 0.23, 0);
+  const finialGeo = new THREE.ConeGeometry(0.038, 0.075, 5);
   const foamGeo = new THREE.PlaneGeometry(1, 1);
 
+  // The finished hull, baked to ONE geometry. Nothing on the boat articulates --
+  // the oars are scenery -- so the whole vessel is rigid, and flattening it
+  // turns twenty-two draw calls per boat into one. That matters here: boats are
+  // not instanced, and a wave lands four of them.
+  let baked = null;
   function make() {
-    const group = new THREE.Group();
-    const hull = new THREE.Mesh(hullGeo, mat(palette.boat));
-    hull.position.y = -0.1;
-    group.add(hull);
-    [-0.18, 0.18].forEach(z => {
-      const bench = kit.bevelBox(0.42, 0.06, 0.035, 0, palette.rockTop);
-      bench.position.set(0, 0.08, z);
-      group.add(bench);
-    });
-    [-1, 1].forEach(side => {
-      const oar = new THREE.Mesh(oarGeo, mat(0x9a754d));
-      oar.position.set(side * 0.25, 0.08, 0);
-      oar.rotation.z = side * Math.PI / 2.7;
-      group.add(oar);
-    });
+    if (!baked) baked = flattenGroup(THREE, buildBoat());
+    const group = new THREE.Mesh(baked.geometry, baked.material);
+    group.frustumCulled = false;
     dynamicRoot.add(group);
 
     const foam = new THREE.Mesh(foamGeo, soft.boatFoamMat);
     foam.rotation.x = -Math.PI / 2;
-    foam.scale.set(1.2, 2.6, 1);
+    foam.scale.set(1.32, 2.86, 1);
     dynamicRoot.add(foam);
-    return { group, foam };
+    return { group, foam, beached: 0 };
   }
 
-  function sync(world, alpha) {
+  function buildBoat() {
+    const group = new THREE.Group();
+    const darkWood = 0x4f3532, timber = 0x806044;
+
+    group.add(new THREE.Mesh(hullGeo, mat(palette.boat)));
+
+    // Gunwale: short segments laid ALONG the deck edge, section to section, so
+    // the rail is centred on the rim it belongs to. The old one was a straight
+    // strut at a fixed height, which is why it hung in the air over a curved
+    // hull that had already closed itself off.
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < SECTIONS.length - 1; k++) {
+        const a = SECTIONS[k], b = SECTIONS[k + 1];
+        group.add(kit.strut(
+          [side * a.w, a.sheer, a.z],
+          [side * b.w, b.sheer, b.z],
+          0.034, darkWood
+        ));
+      }
+    }
+
+    // Cross-benches span the INNER beam and sit on the interior floor, so they
+    // read as thwarts inside a boat rather than as slats laid over a lid.
+    for (const z of [-0.30, 0.30]) {
+      const s = sectionAt(z);
+      const bench = kit.bevelBox(Math.max(0, s.w - WALL) * 2, 0.05, 0.024, 0, timber);
+      bench.position.set(0, s.floor, z);
+      group.add(bench);
+    }
+
+    // Oars, hung on the rail rather than floating beside it.
+    for (const side of [-1, 1]) {
+      for (const z of [-0.20, 0.20]) {
+        const s = sectionAt(z);
+        const oar = new THREE.Mesh(oarGeo, mat(0x9a754d));
+        oar.position.set(side * (s.w - WALL * 0.5), s.sheer - 0.004, z);
+        oar.rotation.z = side * Math.PI / 2.55;
+        group.add(oar);
+      }
+    }
+
+    // Stem and stern posts: they now START at the hull's own tip and rise a
+    // little over a tenth of a unit, instead of launching from mid-hull to y=0.4
+    // and carrying a finial out past the end of the boat.
+    for (const end of [-1, 1]) {
+      const tip = SECTIONS[end < 0 ? 0 : SECTIONS.length - 1];
+      const top = [0, 0.225, end * 0.70];
+      group.add(kit.strut([0, tip.sheer - 0.01, tip.z], top, 0.036, darkWood));
+      const finial = new THREE.Mesh(finialGeo, mat(0xb99a62));
+      finial.position.set(top[0], top[1] + 0.03, top[2]);
+      group.add(finial);
+    }
+
+    group.scale.setScalar(1.1);
+    return group;
+  }
+
+  const GROUND = config.waves.grounding;
+  const GROUND_PITCH = GROUND.pitch * Math.PI / 180;
+
+  function sync(world, alpha, elapsed) {
     liveBoats.clear();
     for (const boat of world.waves.boats) {
       liveBoats.add(boat.id);
@@ -539,10 +671,27 @@ export function createBoatView(THREE, board, kit, soft, rigs, dynamicRoot) {
       if (!view) { view = make(); views.set(boat.id, view); }
       const x = boat.px + (boat.x - boat.px) * alpha;
       const z = boat.pz + (boat.z - boat.pz) * alpha;
+
+      // Beaching: the bow rides up the shelf. Eased rather than snapped, and
+      // exponentially so it is frame-rate independent. Render-only -- the
+      // simulation has no opinion about how a hull sits.
+      const target = boat.landed ? 1 : 0;
+      const k = elapsed ? 1 - Math.exp(-elapsed / GROUND.seconds) : 1;
+      view.beached += (target - view.beached) * k;
+
       view.group.visible = true;
       view.foam.visible = true;
-      view.group.position.set(board.px(x), 0.06, board.px(z));
-      view.group.rotation.y = boat.facing;
+      view.group.position.set(
+        board.px(x),
+        config.waves.hullY + view.beached * GROUND.lift,
+        board.px(z)
+      );
+      // YXZ so the pitch happens about the hull's OWN lateral axis and the
+      // heading is applied after it; with the default order the two interact
+      // and the boat yaws as it tilts. Negative pitch lifts local +z, which is
+      // the direction of travel -- the bow.
+      view.group.rotation.order = 'YXZ';
+      view.group.rotation.set(-view.beached * GROUND_PITCH, boat.facing, 0);
       view.foam.position.set(board.px(x), 0.02, board.px(z));
       view.foam.rotation.z = -boat.facing;
     }
@@ -897,7 +1046,12 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
     const x = hero.px + (hero.x - hero.px) * alpha;
     const z = hero.pz + (hero.z - hero.pz) * alpha;
     const y = hero.py + (hero.y - hero.py) * alpha;
-    const facing = lerpAngle(hero.pFacing, hero.facing, alpha);
+    // During the arrival cutscene the intro owns the hero pose. Avoid blending
+    // against normal gameplay-facing state while the boat is moving or the
+    // interpolation can briefly turn the king back toward the island.
+    const facing = world.phase === 'intro'
+      ? hero.facing
+      : lerpAngle(hero.pFacing, hero.facing, alpha);
     const gait = lerpAngle(hero.pGait, hero.gaitPhase, alpha);
 
     const wx = board.px(x), wz = board.px(z);

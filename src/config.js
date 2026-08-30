@@ -503,8 +503,11 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     // first frame of control still drifting, and freeze it a hair off the
     // default framing.
     zoomSeconds: 5.3,
-    deckHeight: 0.16,          // where he stands on the hull; matches passengers
-    stopOffset: 0.22,          // how far short of the landing tile the hull grounds
+    // The interior floor, matching waves.deckHeight -- it is the same hull. He
+    // stands down in the boat with the rim crossing his shins, rather than on
+    // top of a lid.
+    deckHeight: 0.041,
+    stopOffset: 0.30,          // how far short of the landing tile the hull grounds
     settleSeconds: 0.7         // beat after the landing before control passes
   },
 
@@ -720,6 +723,26 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     approachSeconds: 10,       // boat spawn to landfall
     spawnRadius: 9,            // tiles from board centre; beyond the island
     minSpawnArc: 0.6,          // radians between two boats' spawn angles
+    // Where the hull itself floats. Lower than it was, so the keel sits under
+    // the waterline amidships and the boat reads as displacing water rather
+    // than resting on top of it.
+    hullY: 0.01,
+    // How far short of the water's edge a hull grounds, beyond the last water
+    // sample the approach ray found. Boats used to nose right up to the
+    // shoreline; a hull with any draught touches bottom before that.
+    groundingPullBack: 0.18,
+    // Beaching. The bow rides up on the shelf, so the boat tilts a few degrees
+    // stern-down and lifts slightly rather than staying dead level.
+    grounding: {
+      pitch: 5.5,              // degrees, bow up
+      lift: 0.014,             // world units, so the stern does not dip under
+      seconds: 0.4             // eased, because a hull does not snap to an angle
+    },
+    // Where a passenger's feet sit: the INTERIOR FLOOR of the boat model in
+    // views.js, with its scale and hullY applied -- the same number the arrival
+    // cutscene stands the king on. They stand down inside the hull now, so the
+    // rim crosses them around the knee. Change the hull and both move together.
+    deckHeight: 0.041,
     disembarkSeconds: 0.42,    // time for one passenger to jump onto the beach
     disembarkJumpHeight: 0.28,
     disembarkInterval: 0.25,   // launch cadence; arcs overlap without shortening

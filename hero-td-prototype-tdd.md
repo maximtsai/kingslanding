@@ -501,6 +501,43 @@ Retry on rejection with a bounded attempt count and a fallback to a hand-authore
 
 **Minimum spawn arc** keeps boats from overlapping visually during approach or converging on the way in.
 
+**The hull is one lofted solid, not an assembly.** The first version was an
+eight-vertex shell with a CLOSED TOP, which caused every complaint about it at
+once: the floor and benches were drawn inside a sealed lid and never seen, the
+gunwales floated above that lid with nothing joining them to it, and the stem
+posts reached y=0.4 carrying finials out past the ends of the boat. It read as a
+pile of parts because that is what it was.
+
+The second attempt fixed the assembly but capped it with a flat deck, which read
+as a slab: a boat is a BOWL and the eye wants to see down into it. Each of the
+six cross-sections therefore carries FOUR heights -- keel, sheer, interior floor,
+and an inner half-beam offset from the outer by the planking thickness -- and
+consecutive pairs are skinned with an outer side, a bottom, a rim band, an inner
+side and a floor. The interior pinches shut at the two tips on its own, because
+the inner half-beam clamps at zero there.
+
+Everything that sits on it is placed from that same table, so the thwarts span
+the beam they actually stand at and the gunwale follows the sheer it belongs to.
+Overall height came down about a quarter, the keel now sits below the waterline
+amidships, and passengers stand on the interior floor with the rim crossing their
+shins rather than perched on a lid.
+
+**Beaching.** A hull grounds SHORT of the water's edge -- the approach march in
+landing.js stops at the last water sample, which put the bow practically on the
+sand -- and then tilts a few degrees bow-up as it rides the shelf, easing in
+rather than snapping. Both are render-and-spawn detail; the simulation still
+treats a grounded boat exactly as before, and passengers still disembark onto the
+landing TILE rather than onto the hull, so nothing downstream moved.
+
+The tilt uses Euler order YXZ so the pitch happens about the hull's own lateral
+axis with the heading applied after it. With the default order the two interact
+and the boat yaws as it tilts.
+
+**And it is flattened to a single draw.** Nothing on a boat articulates -- the
+oars are scenery -- so the whole vessel is rigid and goes through the same
+`flattenGroup` the structures use. Twenty-two meshes per boat become one, which
+matters because boats are NOT instanced and a wave lands four of them.
+
 ### Shootable approach
 Boats cannot be damaged or destroyed. Passengers are individually valid targets for the entire approach, so towers covering water and the hero can thin the landing party before it lands.
 

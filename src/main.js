@@ -244,7 +244,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
 
       unitView.sync(world, blend, elapsed);
       structureView.sync(world, view.camera, elapsed);
-      boatView.sync(world, blend);
+      boatView.sync(world, blend, world.paused ? 0 : elapsed);
       projectileView.sync(world, blend);
       coinView.sync(world, blend);
       heroView.sync(world, blend, elapsed);

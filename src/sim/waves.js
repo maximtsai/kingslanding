@@ -111,7 +111,14 @@ export function createWaves(world) {
 
   function spawnBoat(definition) {
     const landing = definition.landing || pickLanding(definition.from);
-    const distance = Math.hypot(landing.stop.x - landing.sx, landing.stop.z - landing.sz);
+    // Back off along the approach so the hull touches bottom before it reaches
+    // the water's edge. The march in landing.js stops at the last WATER sample,
+    // which puts the bow practically on the beach.
+    const stop = {
+      x: landing.stop.x - landing.ux * W.groundingPullBack,
+      z: landing.stop.z - landing.uz * W.groundingPullBack
+    };
+    const distance = Math.hypot(stop.x - landing.sx, stop.z - landing.sz);
     const spacing = definition.units.length > 1
       ? Math.min(PASSENGER_SPACING, 0.9 / (definition.units.length - 1))
       : 0;
@@ -120,7 +127,7 @@ export function createWaves(world) {
       x: landing.sx, z: landing.sz, y: 0,
       px: landing.sx, pz: landing.sz, py: 0,
       facing: Math.atan2(landing.ux, landing.uz),
-      stop: landing.stop,
+      stop,
       land: landing.land,
       speed: distance / W.approachSeconds,
       landed: false,
@@ -161,7 +168,7 @@ export function createWaves(world) {
   function placeAboard(u, boat) {
     u.x = boat.x + Math.sin(boat.facing) * u.boatOffset;
     u.z = boat.z + Math.cos(boat.facing) * u.boatOffset;
-    u.y = 0.16;
+    u.y = W.deckHeight;
     u.facing = boat.facing;
   }
 

@@ -86,10 +86,38 @@ export function createHero(world, flowHero) {
   // run, this one decides whether a destination is legal, and a disagreement
   // between them shows up as a tile he will accept an order for but cannot
   // actually route to.
-  function blockedForHero(i, j) {
+  function blockedForHero(i, j, x = i, z = j) {
     const blocker = world.structures.at(i, j);
     if (!blocker || !blocker.alive) return false;
+    if (blocker.kind === 'house') {
+      return Math.abs(x - blocker.x) < H.houseHitboxHalfExtent &&
+        Math.abs(z - blocker.z) < H.houseHitboxHalfExtent;
+    }
+    if (blocker.kind === 'castle') {
+      return Math.abs(x - blocker.x) < H.castleHitboxHalfExtent &&
+        Math.abs(z - blocker.z) < H.castleHitboxHalfExtent;
+    }
     return !(blocker.kind === 'tower' && (blocker.type === 'archer' || blocker.type === 'barricade'));
+  }
+
+  function crossesBlocker(blocker, ax, az, bx, bz) {
+    const half = blocker.kind === 'house' ? H.houseHitboxHalfExtent
+      : blocker.kind === 'castle' ? H.castleHitboxHalfExtent : null;
+    if (half === null) return true;
+    let enter = 0, leave = 1;
+    for (const [a, b, centre] of [[ax, bx, blocker.x], [az, bz, blocker.z]]) {
+      const delta = b - a;
+      const min = centre - half, max = centre + half;
+      if (Math.abs(delta) < 1e-8) {
+        if (a <= min || a >= max) return false;
+        continue;
+      }
+      let first = (min - a) / delta, last = (max - a) / delta;
+      if (first > last) [first, last] = [last, first];
+      enter = Math.max(enter, first); leave = Math.min(leave, last);
+      if (enter >= leave) return false;
+    }
+    return leave > 0 && enter < 1;
   }
 
   // One destination, taken literally. Fails rather than searching -- the search
@@ -99,14 +127,41 @@ export function createHero(world, flowHero) {
   function commitTo(i, j, aimX, aimZ) {
     if (!hero.alive) return false;
     if (!board.isLand(i, j)) return false;
-    if (blockedForHero(i, j)) return false;
-    const field = flowHero.field('hero:' + i + ':' + j, [[i, j]], undefined);
+    if (blockedForHero(i, j, aimX, aimZ)) return false;
+
+    // Houses and the castle are narrower than their occupied tiles. Keep those
+    // tiles blocked in the flow field so routes never cross the structure, but
+    // approach a legal clicked margin from the nearest outside tile.
+    let routeI = i, routeJ = j;
+    const targetBlocker = world.structures.at(i, j);
+    if (targetBlocker && blockedForHero(i, j)) {
+      const approaches = [];
+      const span = targetBlocker.span || 1;
+      for (let dj = -1; dj <= span; dj++) {
+        for (let di = -1; di <= span; di++) {
+          if (di >= 0 && di < span && dj >= 0 && dj < span) continue;
+          const ci = targetBlocker.i + di, cj = targetBlocker.j + dj;
+          if (!board.isLand(ci, cj) || blockedForHero(ci, cj)) continue;
+          if (board.at(ci, cj) !== board.at(i, j)) continue;
+          approaches.push({ i: ci, j: cj, d: Math.hypot(ci - aimX, cj - aimZ) });
+        }
+      }
+      approaches.sort((a, b) => a.d - b.d);
+      if (!approaches.length) return false;
+      routeI = approaches[0].i; routeJ = approaches[0].j;
+    }
+
+    const field = flowHero.field(
+      `hero:${i}:${j}:via:${routeI}:${routeJ}`, [[routeI, routeJ]], undefined
+    );
     const originX = hero.cliffJump ? hero.cliffJump.toX : hero.x;
     const originZ = hero.cliffJump ? hero.cliffJump.toZ : hero.z;
     let originI = Math.round(originX), originJ = Math.round(originZ);
     let escape = null;
     const originBlocker = world.structures.at(originI, originJ);
-    if (originBlocker && blockedForHero(originI, originJ)) {
+    const directMargin = originBlocker && originBlocker === targetBlocker &&
+      !crossesBlocker(originBlocker, originX, originZ, aimX, aimZ);
+    if (originBlocker && blockedForHero(originI, originJ) && !directMargin) {
       // The visible house is narrower than its tile, so the king may legitimately
       // stand near its edge while rounding to the occupied cell. Start routing
       // from the nearest reachable perimeter tile and walk there first; treating
@@ -119,7 +174,11 @@ export function createHero(world, flowHero) {
           if (di >= 0 && di < span && dj >= 0 && dj < span) continue;
           if (!board.isLand(ci, cj) || blockedForHero(ci, cj)) continue;
           if (!isFinite(field.get(ci, cj))) continue;
-          candidates.push({ i: ci, j: cj, d: Math.hypot(ci - originX, cj - originZ) });
+          const tierPenalty = board.at(ci, cj) === hero.tier ? 0 : 10;
+          candidates.push({
+            i: ci, j: cj,
+            d: Math.hypot(ci - originX, cj - originZ) + tierPenalty
+          });
         }
       }
       candidates.sort((a, b) => a.d - b.d);
@@ -127,7 +186,7 @@ export function createHero(world, flowHero) {
       originI = candidates[0].i; originJ = candidates[0].j;
       escape = [originI, originJ];
     }
-    if (!isFinite(field.get(originI, originJ))) return false;
+    if (!directMargin && !isFinite(field.get(originI, originJ))) return false;
     hero.field = field;
     hero.goal = { i, j, x: aimX, z: aimZ };
     hero.waypoint = escape;
@@ -316,7 +375,8 @@ export function createHero(world, flowHero) {
     const jumpLocked = stepCliffJump(dt);
     if (!jumpLocked && hero.goal) {
       const here = [Math.round(hero.x), Math.round(hero.z)];
-      const atGoalTile = here[0] === hero.goal.i && here[1] === hero.goal.j;
+      const atGoalTile = !hero.waypoint &&
+        here[0] === hero.goal.i && here[1] === hero.goal.j;
       if (hero.waypoint && Math.hypot(hero.waypoint[0] - hero.x, hero.waypoint[1] - hero.z) < 1e-6) {
         hero.waypoint = null;
       }

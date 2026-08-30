@@ -115,6 +115,7 @@ export function createSeparation(board, structures) {
         seen.add(s.id);
         let half = null;
         if (s.kind === 'house') half = config.hero.houseHitboxHalfExtent;
+        else if (s.kind === 'castle') half = config.hero.castleHitboxHalfExtent;
         else if (s.kind === 'tower' && s.type !== 'archer' && s.type !== 'barricade') {
           half = config.hero.towerHitboxHalfExtent;
         }

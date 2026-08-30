@@ -429,7 +429,8 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     stairUpSpeed: 0.75,       // fraction of normal speed while climbing stairs
     walkAnimRate: 2,          // animation cadence only; does not alter movement speed
     towerHitboxHalfExtent: 0.28, // hero-only; arrow towers are fully pass-through
-    houseHitboxHalfExtent: 0.36, // hero-only; matches the visible house more closely than its tile
+    houseHitboxHalfExtent: 0.31, // hero-only; visible house width is 0.62 tiles
+    castleHitboxHalfExtent: 0.825, // hero-only; visible castle base is 1.65 tiles wide
 
     // ---- tapping somewhere he cannot stand ----
     // A tap inside a house used to do nothing whatever, which reads as a dropped

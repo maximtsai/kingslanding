@@ -183,7 +183,7 @@ any of them was played.
 ## 4. Structures
 
 ### Castle
-- At the start of every level, before normal tower building, the king must place one castle. It is free and mandatory.
+- At the start of every level, before normal tower building, the king must place one castle. It is free and mandatory. It is sited with the same arm-tap-confirm flow as every tower (see §16, "Pick, place, confirm"), armed by a single round button carrying the keep glyph. Until that button is pressed the king walks normally, so the opening beat of a level is reading the island rather than being handed a placement cursor.
 - The castle occupies a 2x2 square of orthogonally adjacent `LAND` tiles. All four tiles must be empty and on the same elevation; it cannot overlap water, shore, ramps, houses, or another structure.
 - The placement validator writes the same `CastleRef` into all four occupant cells and requires at least one reachable, non-castle land tile adjacent to its footprint. The player cannot place an objective enemies can never attack.
 - It is a permanent objective: it cannot be upgraded, moved, taken down, or rebuilt. The four occupied tiles are never buildable while it lives.
@@ -950,12 +950,41 @@ allocating draws.
 
 Bottom-anchored, thumb-reachable, sized for 720x1280.
 
+### Pick, place, confirm
+
+Building takes three presses, and each one answers exactly one question:
+
+| step | question | state |
+|---|---|---|
+| press a bar button | **what** am I building | arms a type |
+| tap the ground | **where** does it go | proposes a spot |
+| press the checkmark | am I **sure** | spends the gold |
+
+**Nothing is ever armed by default.** Not at the start of the build phase, and not on arrival at the castle phase either. Until a button is pressed, a tap means what it means everywhere else in the game: move the king. This matters most at the very beginning -- the opening beat of a level is walking the island and reading it, which is the decision the castle siting is *about*, and a placement UI switched on over the top of that gets in the way of it.
+
+Pressing the armed button again disarms and puts the map back down. Nothing has been bought at that point, so there is nothing to undo -- only a proposal to forget.
+
+The confirm step is the one that earns its keep. The tap that picks a tile is the tap most likely to be wrong: on a phone there is no hover to check a spot with first, the finger covers the tile it is landing on, and the camera is at an angle. So the tap only *proposes*. A ghost footprint appears on the ground with the true coverage overlay, and a circular checkmark button pops in above it. Nothing is bought until that second, deliberate press on a target already visible on screen. Re-tapping moves the proposal, so a misjudged spot costs a tap rather than a tower.
+
+The checkmark is anchored to the **tile**, not to the bottom bar, and is re-projected every frame -- the camera follows the king and can be rotated and zoomed with a placement still pending. It is clamped inside the stage, because a confirm button that has drifted off the edge is an unfinishable purchase.
+
+**On desktop the footprint also follows the cursor**, before any tap, so a spot can be shopped around without committing to one. It stops following the moment a placement is pending: otherwise reaching for the confirm button would drag the very footprint it is attached to out from under it. Touch has no hover at all, which is why tap-then-confirm is the real mechanism and this is only a convenience laid on top of it. The coverage mesh probes every land tile, so it is rebuilt only when the footprint changes square, not on every mouse move.
+
+**An overlay is only allowed on screen while a decision is live.** An earlier revision made the king himself the cursor -- placement was wherever he stood, so the footprint marker and coverage ring were on for the entire build phase. That failed for a reason worth writing down: *a permanent slab of UI parked on the character you are trying to look at is worse than no preview at all.* Coverage is wanted at the moment of decision, not continuously. Hence: no ghost until a tap proposes one, and none again the moment it is confirmed or abandoned.
+
+**Everything is dismissible without a mode to escape.** Pressing the armed bar button again disarms and drops the proposal; arming a different tower does the same, because a spot chosen for a barricade is rarely the spot for a ballista. Confirming keeps the type armed so a run of towers is press, tap-confirm, tap-confirm -- but drops it once the purse cannot cover another, so the bar never advertises something that can only be refused.
+
+An illegal tile still gets a ghost, in red, and simply has no confirm button. "You cannot put it there" is information the player asked for by tapping.
+
+**Castle siting uses the identical flow**, which is the point: it is the first placement a player ever makes, so it is what teaches the model. Its "what" button is a single large round one carrying the keep glyph, because there is only ever one thing to place -- but it arms, disarms and confirms exactly like the tower bar does.
+
 **Build phase**
 - The bottom UI contains only tower buttons with costs and the READY button.
 - Gold counter, wave indicator (`Wave 3 / 6`).
 - Large READY button, bottom right.
-- Range overlay on the ground while a tower type is selected, showing **both** the maximum range and the minimum-range dead zone. It must account for real terrain LOS, and for ballista it must reflect flat-trajectory blocking. A range circle that lies about cliffs teaches the wrong model of the game.
-- Tile boundary lines visible during build phase so buildable space is unambiguous.
+- Range overlay on the ground **under the pending placement only**, showing **both** the maximum range and the minimum-range dead zone. It must account for real terrain LOS, and for ballista it must reflect flat-trajectory blocking. A range circle that lies about cliffs teaches the wrong model of the game.
+- The footprint marker is gold fill over a dark outline, red when the tile cannot take it. It was allowed to be a 34%-white wash back when it only flickered up under a cursor; as the thing a purchase is confirmed against, it has to read at a glance over grass, stone and sand alike.
+- Tile boundary lines visible exactly while a placement is armed, for towers and the castle alike. They answer "which square am I aiming at", so they belong to placement mode rather than to the whole phase -- and taking them away again is part of what makes disarming feel like putting the map back down.
 
 **Combat phase**
 - Gold and wave progress remain in the top HUD.

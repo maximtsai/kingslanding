@@ -68,36 +68,48 @@
 
   /* ---- bottom ---- */
   #bottom {
-    left: 0; right: 0; bottom: 0; padding: 0 28px 30px; height: 210px;
-    background: linear-gradient(180deg, rgba(26,41,47,0) 0%, rgba(22,36,42,.55) 42%, #162228 100%);
+    /* Keep the controls visible without the large translucent build-mode panel. */
+    left: 0; right: 0; bottom: 0; padding: 0 28px 30px; min-height: 210px;
+    background: transparent;
     display: flex; flex-direction: column; justify-content: flex-end;
   }
 
   #build-panel { display: flex; gap: 14px; align-items: stretch; }
   .tower-button {
     flex: 1; display: flex; flex-direction: column; gap: 8px; align-items: center;
-    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
-    border-radius: 22px; padding: 16px 12px; cursor: pointer; color: #e7eeef;
+    background: #fff; border: 5px solid #000;
+    border-radius: 22px; padding: 12px 8px; cursor: pointer; color: #000;
     font-family: inherit;
   }
-  .tower-button:hover { background: rgba(255,255,255,.13); }
-  .tower-button.on { background: var(--gold); color: #1a1206; border-color: var(--gold); }
+  .tower-button:hover { background: #fff; }
+  .tower-button.on { background: #fff; color: #000; border-color: #000; }
   .tower-button.poor { opacity: .4; }
   /* The build-bar glyphs echo the silhouette grammar of TDD 5: the archer is a
      tower on legs, the barricade is a low slab. */
   .tower-button .glyph { width: 68px; height: 68px; }
   .tower-button .glyph-barricade { height: 32px !important; margin-top: 24px; }
-  .glyph-archer { border: 3px solid currentColor; border-radius: 50%; }
-  .glyph-barricade { border: 6px solid currentColor; border-radius: 8px; height: 32px !important; margin-top: 24px; }
-  .tower-button .name { font-size: 14px; font-weight: 700; letter-spacing: .03em; }
-  .tower-button .cost { font-size: 13px; font-weight: 600; opacity: .75; }
+  .glyph-archer { border: 4px solid #000; border-radius: 50%; }
+  /* A keep: a solid block under three merlons. Two of the merlons are cast with
+     box-shadow off the first, so the whole silhouette is one element. */
+  .glyph-castle {
+    position: relative; width: 44px; height: 30px;
+    border: 5px solid #000; border-top: 0; border-radius: 0 0 4px 4px;
+  }
+  .glyph-castle::before {
+    content: ''; position: absolute; left: -5px; top: -14px; width: 12px; height: 14px;
+    background: #000;
+    box-shadow: 17px 0 0 #000, 34px 0 0 #000;
+  }
+  .glyph-barricade { border: 7px solid #000; border-radius: 8px; height: 32px !important; margin-top: 24px; }
+  .tower-button .name { font-size: 17px; font-weight: 900; letter-spacing: .03em; color: #000; }
+  .tower-button .cost { font-size: 16px; font-weight: 800; opacity: 1; color: #000; }
 
   #btn-ready {
-    flex: 0 0 190px; border: 0; border-radius: 22px; cursor: pointer;
-    background: var(--red); color: #fff; font-family: inherit;
-    font-size: 20px; font-weight: 800; letter-spacing: .1em;
+    flex: 0 0 190px; border: 5px solid #000; border-radius: 22px; cursor: pointer;
+    background: #fff; color: #000; font-family: inherit;
+    font-size: 24px; font-weight: 900; letter-spacing: .1em;
   }
-  #btn-ready:hover { background: #d5423b; }
+  #btn-ready:hover { background: #fff; }
 
   /* ---- incoming wave (the build-phase telegraph) ----
      One badge per enemy type per landing. The triangle rides the rim and points
@@ -107,6 +119,33 @@
   /* Anchored to the whole stage, not to a strip: each badge is placed on the
      screen EDGE in the direction its boat comes from, so the frame itself
      becomes the compass. Positions are written in stage pixels every frame. */
+  /* ---- the placement confirm (TDD 16) ----
+     A tap puts a ghost on the ground; this pops in above it, and pressing it is
+     what actually spends the gold. The gap between choosing a spot and paying
+     for it is the whole point -- on a phone the tap that picks the tile is also
+     the tap most likely to be wrong, and there is no hover to check it with
+     first. Anchored in the world rather than parked on the bottom bar so that
+     what you are confirming is never in doubt. */
+  #place-confirm { left: 0; top: 0; }
+  #btn-confirm-place {
+    position: absolute; left: -34px; top: -34px; width: 68px; height: 68px;
+    border: 0; border-radius: 999px; padding: 0; cursor: pointer;
+    background: var(--gold); box-shadow: 0 6px 18px rgba(8,16,19,.45);
+    display: grid; place-items: center;
+  }
+  /* Drawn, not typed: a glyph would land differently on every device font. */
+  #btn-confirm-place::before {
+    content: ''; width: 24px; height: 13px; margin-top: -6px;
+    border-left: 6px solid #22160a; border-bottom: 6px solid #22160a;
+    border-radius: 2px; transform: rotate(-45deg);
+  }
+  #btn-confirm-place.pop { animation: confirm-pop .24s cubic-bezier(.2,1.5,.45,1); }
+  @keyframes confirm-pop {
+    from { transform: scale(.3); opacity: 0; }
+    60%  { transform: scale(1.12); opacity: 1; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
   #wave-preview { inset: 0; }
   #wave-preview .label {
     position: absolute; left: 0; right: 0; top: 150px; text-align: center;
@@ -179,13 +218,26 @@
 
   #castle-prompt {
     display: none; flex-direction: column; gap: 6px; align-items: center;
-    background: rgba(242,193,78,.14); border: 1px solid rgba(242,193,78,.5);
-    border-radius: 22px; padding: 18px 20px;
+    background: transparent; border: 0; border-radius: 0; padding: 18px 20px;
   }
   #castle-prompt .title {
     font-size: 19px; font-weight: 800; letter-spacing: .1em; color: var(--gold);
   }
   #castle-prompt .sub { font-size: 13px; font-weight: 600; color: rgba(231,238,239,.66); }
+
+  /* Siting the castle is ARMED, never automatic (TDD 4). Until this is pressed
+     a tap means what it means everywhere else -- move the king -- so the very
+     first thing a player does is walk around and look at the island, which is
+     exactly the decision the castle placement is supposed to be about. Pressing
+     it again puts the map back down. */
+  #btn-castle-mode {
+    margin-top: 10px; width: 104px; height: 104px; border-radius: 999px;
+    border: 5px solid #000; background: #fff;
+    color: #000; cursor: pointer; display: grid; place-items: center;
+    font-family: inherit;
+  }
+  #btn-castle-mode:hover { background: #fff; }
+  #btn-castle-mode.on { background: #fff; border-color: #000; color: #000; }
 
   /* ---- options ----
      Opening it PAUSES. The pause button it replaced was the only way to stop
@@ -287,6 +339,10 @@
 
   <div class="hud" id="wave-preview"></div>
 
+  <div class="hud" id="place-confirm" style="display:none">
+    <button id="btn-confirm-place" aria-label="Confirm placement"></button>
+  </div>
+
   <div class="hud" id="bottom">
     <div id="build-panel">
       <button class="tower-button" data-build="archer">
@@ -317,7 +373,9 @@
 
     <div id="castle-prompt">
       <div class="title">SITE YOUR CASTLE</div>
-      <div class="sub">Tap a flat 2&times;2 of open ground. Free, and it cannot be moved.</div>
+      <button id="btn-castle-mode" aria-label="Place the castle">
+        <div class="glyph-castle"></div>
+      </button>
     </div>
   </div>
 

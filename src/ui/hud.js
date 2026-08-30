@@ -92,11 +92,42 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // upgrading something already standing (TDD 7).
   const buildButtons = [...document.querySelectorAll('[data-build]')];
 
-  let selected = null;          // tower type queued for placement
+  // ---- PICK, PLACE, CONFIRM (TDD 16) ----
+  //
+  // Three steps, and each one answers exactly one question:
+  //
+  //   press a bar button   WHAT am I building        (arms `selected`)
+  //   tap the ground       WHERE does it go          (sets `pending`)
+  //   press the checkmark  am I SURE                 (spends the gold)
+  //
+  // The third step is the one that earns its keep. The tap that picks a tile is
+  // the tap most likely to be wrong -- on a phone there is no hover to check a
+  // spot with first, the finger hides the tile it is landing on, and the camera
+  // is at an angle. So the tap only proposes; nothing is bought until a second,
+  // deliberate press on a target that has already appeared on screen.
+  //
+  // It also buys back something the king-as-cursor version lost: the coverage
+  // overlay is on ONLY while a placement is pending, so the build phase is not
+  // spent looking at the king through a permanent slab of UI.
+  let selected = null;          // tower type armed on the bar, or null
+  let castleArming = false;     // the castle button is pressed in (CASTLE phase)
+  let pending = null;           // { type, i, j, span, valid } -- a proposed spot
+  let hovered = null;           // { i, j, valid } -- desktop hover, before any tap
   let inspecting = null;        // placed tower record whose panel is open
+
+  // Placement is only live when something is ARMED. Nothing is armed on arrival,
+  // so the first thing a player can do is walk around and look at the island --
+  // which is the decision the castle siting is actually about.
+  const arming = () => world.phase === PHASE.CASTLE ? castleArming : !!selected;
+
+  const confirmLayer = $('place-confirm');
+  const confirmButton = $('btn-confirm-place');
 
   function setSelected(type) {
     selected = selected === type ? null : type;
+    // Arming something else abandons the pending spot rather than re-siting it:
+    // a spot chosen for a barricade is not usually the spot for a ballista.
+    clearPending();
     if (selected) inspecting = null;
     for (const button of buildButtons) {
       button.classList.toggle('on', button.dataset.build === selected);
@@ -104,6 +135,128 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     onSelectTower(selected);
     refreshPanels();
   }
+
+  function clearPending() {
+    pending = null;
+    hovered = null;
+    confirmLayer.style.display = 'none';
+  }
+
+  // ---- siting the castle (TDD 4) ----
+  // The same arm-tap-confirm shape as every tower, driven by one round button
+  // instead of a bar of them, because there is only ever one thing to place.
+  const castleModeButton = $('btn-castle-mode');
+  const castleHint = $('castle-hint');
+  const CASTLE_HINT_IDLE = '';
+  const CASTLE_HINT_ARMED = 'Tap a flat 2\u00d72 of open ground, then confirm.';
+
+  castleModeButton.onclick = () => {
+    feedback.tap();
+    castleArming = !castleArming;
+    // Pressing it again puts the map back down. Nothing has been bought yet, so
+    // there is nothing to undo -- only a proposal to forget.
+    clearPending();
+    castleModeButton.classList.toggle('on', castleArming);
+    castleHint.textContent = castleArming ? CASTLE_HINT_ARMED : CASTLE_HINT_IDLE;
+    onSelectTower(castleArming ? 'castle' : null);
+  };
+
+  // What is being placed right now, or null when nothing is armed.
+  function armedFootprint() {
+    if (world.phase === PHASE.CASTLE) {
+      return castleArming ? { type: null, span: config.castle.footprint } : null;
+    }
+    if (world.phase !== PHASE.BUILD || !selected) return null;
+    return { type: selected, span: 1 };
+  }
+
+  const canPlaceAt = (type, i, j) =>
+    type ? world.structures.canPlace(i, j) : world.structures.canPlaceCastle(i, j);
+
+  // Desktop only: the footprint follows the cursor BEFORE the first tap, so the
+  // spot can be shopped around without committing to one. It deliberately stops
+  // once a placement is pending -- otherwise reaching for the confirm button
+  // would drag the very footprint it is attached to out from under it.
+  //
+  // Touch has no hover at all, which is why the tap-then-confirm flow is the
+  // real mechanism and this is only a convenience on top of it.
+  function hover(i, j) {
+    const armed = armedFootprint();
+    if (!armed || pending) { hovered = null; return false; }
+    if (hovered && hovered.i === i && hovered.j === j) return true;
+    hovered = { i, j, span: armed.span, type: armed.type,
+                valid: canPlaceAt(armed.type, i, j) };
+    return true;
+  }
+
+  function clearHover() { hovered = null; }
+
+  // Called by main on every tap that lands on the ground while something is
+  // armed -- including taps on tiles that cannot take the building, because
+  // "you cannot put it there" is information the player asked for and the red
+  // footprint is how they get it. There is simply no confirm button on one.
+  function propose(i, j) {
+    const armed = armedFootprint();
+    if (!armed) return false;
+    const { type, span } = armed;
+    const valid = canPlaceAt(type, i, j);
+    const moved = !pending || pending.i !== i || pending.j !== j;
+    pending = { type, i, j, span, valid };
+    hovered = null;
+    feedback.tap();
+    if (!valid) { confirmLayer.style.display = 'none'; return true; }
+    confirmLayer.style.display = 'block';
+    placeConfirm();
+    // Re-trigger the pop only when the target actually moves. Replaying it on
+    // every tap of the same tile reads as a stutter rather than an arrival.
+    if (moved) {
+      confirmButton.classList.remove('pop');
+      void confirmButton.offsetWidth;      // force the animation to restart
+      confirmButton.classList.add('pop');
+    }
+    return true;
+  }
+
+  // How far above the footprint the button floats, in stage pixels. Enough that
+  // the thumb pressing it is not covering the thing being confirmed.
+  const CONFIRM_LIFT = 96;
+  const EDGE_PAD = 54;
+
+  function placeConfirm() {
+    if (!pending || !pending.valid) return;
+    const half = (pending.span - 1) / 2;
+    const anchor = view.screenPositionOf(
+      pending.i + half, pending.j + half,
+      world.board.topY(pending.i, pending.j) + 0.5
+    );
+    // Clamped inside the stage: the camera rotates and zooms freely, and a
+    // confirm button that has drifted off the edge is an unfinishable purchase.
+    const x = Math.min(720 - EDGE_PAD, Math.max(EDGE_PAD, anchor.x));
+    const y = Math.min(1280 - EDGE_PAD, Math.max(EDGE_PAD, anchor.y - CONFIRM_LIFT));
+    confirmLayer.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+  }
+
+  confirmButton.onclick = () => {
+    if (!pending || !pending.valid) return;
+    if (world.phase === PHASE.CASTLE) {
+      if (!world.placeCastle(pending.i, pending.j)) { feedback.denied(); return; }
+      feedback.tap();
+      castleArming = false;
+      castleModeButton.classList.toggle('on', false);
+      castleHint.textContent = CASTLE_HINT_IDLE;
+      clearPending();
+      return;
+    }
+    const type = pending.type;
+    if (world.gold < config.towers[type].cost) { feedback.denied(); return; }
+    if (!world.build(type, pending.i, pending.j)) { feedback.denied(); return; }
+    feedback.tap();
+    clearPending();
+    // Stay armed so a run of towers is press-tap-confirm, tap-confirm,
+    // tap-confirm -- but drop the arming once the purse cannot cover another,
+    // so the bar never advertises something that can only be refused.
+    if (world.gold < config.towers[type].cost) setSelected(type);
+  };
 
   for (const button of buildButtons) {
     const type = button.dataset.build;
@@ -206,6 +359,11 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     towerPanel.style.display = inspectingNow ? 'flex' : 'none';
     castlePrompt.style.display = siting ? 'flex' : 'none';
     if (inspectingNow) drawTowerPanel();
+    // Driven from here rather than only from setSelected, because the grid
+    // depends on the PHASE as much as on the selection -- and returning to the
+    // build phase after a wave changes the phase without changing the
+    // selection, which used to leave the lines switched off for the rest of it.
+    onSelectTower(arming() ? (selected || 'castle') : null);
   }
 
   // ---- failure recovery (TDD 13) ----
@@ -416,14 +574,26 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
   return {
     get selected() { return selected; },
-    clearSelection() { setSelected(null); },
     get inspecting() { return inspecting; },
+    // The proposed spot, or null. Read by main to drive the ground ghost.
+    get pending() { return pending; },
+    clearSelection() { setSelected(null); },
+
+    // True while a placement is armed, so main knows a tap on the ground is a
+    // proposal rather than a move order.
+    get arming() { return arming(); },
+    // The cursor footprint before any tap has been made, or null.
+    get hovered() { return hovered; },
+
+    // A tap on the ground while something is armed. Returns true if it was
+    // consumed, so main knows not to treat the same tap as a move order.
+    propose, hover, clearHover,
 
     // Tapping a placed tower during the build phase opens its panel. Tapping
     // anywhere else closes it, which is why this also accepts null.
     inspect(record) {
       inspecting = (record && record.kind === 'tower' && record.alive) ? record : null;
-      if (inspecting) setSelectedSilently(null);
+      if (inspecting) { setSelectedSilently(null); clearPending(); }
       refreshPanels();
       return !!inspecting;
     },
@@ -435,7 +605,16 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
       if (world.phase !== lastPhase) {
         lastPhase = world.phase;
         const building = world.phase === PHASE.BUILD;
+        const siting = world.phase === PHASE.CASTLE;
         if (!building) { inspecting = null; setSelectedSilently(null); }
+        // Neither a pending placement nor an armed castle survives the phase
+        // that offered it.
+        if (!siting && castleArming) {
+          castleArming = false;
+          castleModeButton.classList.toggle('on', false);
+          castleHint.textContent = CASTLE_HINT_IDLE;
+        }
+        if (!building && !siting) clearPending();
         refreshPanels();
         const won = world.phase === PHASE.WON;
         const over = won || world.phase === PHASE.LOST;
@@ -456,6 +635,11 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
           restartWave.style.display = won ? 'none' : 'block';
         }
       }
+
+      // The confirm button is anchored to a tile, not to the screen, so it has
+      // to be re-projected every frame -- the camera follows the king and can
+      // be rotated and zoomed while a placement is still pending.
+      if (pending && pending.valid) placeConfirm();
 
       // The preview is rebuilt on identity, so this is a string compare on most
       // frames and a DOM rebuild only when the wave actually changes.

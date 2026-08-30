@@ -116,7 +116,8 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   // teaches the wrong model of the game, and the only way it cannot lie is if
   // there is exactly one implementation of "can this shoot that".
   function probeCoverage(towerI, towerJ, targetI, targetJ, typeOverride) {
-    const spec = config.towers[typeOverride || hud.selected || 'archer'];
+    const spec = config.towers[typeOverride || (hud.pending && hud.pending.type)
+                               || (hud.hovered && hud.hovered.type) || hud.selected || 'archer'];
     // Barricades have no range at all -- there is nothing to draw.
     if (!spec || !spec.range) return 'out';
     const from = {
@@ -136,8 +137,9 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   const pick = createPicker(THREE, board, view.camera);
   const rect = () => view.canvas.getBoundingClientRect();
 
-  // One tap does one of three things depending on phase and on what is under it,
-  // and nothing else.
+  // A tap PROPOSES; it never buys. While something is armed on the build bar
+  // the tap picks the tile and the confirm button in the HUD spends the gold
+  // (TDD 16). With nothing armed the tap means what it has always meant.
   attachGestures(view.canvas, view, (clientX, clientY) => {
     // The cutscene is not interactive. Camera drag and zoom still work, because
     // taking the camera away as well would read as the game having frozen.
@@ -145,23 +147,13 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
     const hit = pick(clientX, clientY, rect());
     if (!hit) return;
 
-    // TDD 4: siting the castle is the opening beat and nothing else is
-    // available until it is done -- not building, not even moving the king.
-    if (world.phase === PHASE.CASTLE) {
-      if (world.placeCastle(hit.i, hit.j)) ghost.hide();
-      return;
-    }
+    // A tap only places while something is ARMED -- including during castle
+    // siting, which arrives disarmed. Before the castle button is pressed the
+    // opening beat is walking around and reading the island, which is the
+    // decision the siting is about; placement mode is entered deliberately.
+    if (hud.arming && hud.propose(hit.i, hit.j)) return;
 
     if (world.phase === PHASE.BUILD) {
-      if (hud.selected) {
-        const type = hud.selected;
-        if (world.build(type, hit.i, hit.j)) {
-          // Deselect once the purse can no longer cover another, so a stray
-          // second tap does not spend gold the player did not mean to spend.
-          if (world.gold < config.towers[type].cost) hud.clearSelection();
-        }
-        return;
-      }
       // TDD 7: tapping a placed tower opens its upgrade panel. Tapping anywhere
       // else closes it -- which is also how the panel is dismissed, so there is
       // no modal state a player can get stuck inside.
@@ -169,27 +161,48 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       if (hud.inspect(standing)) return;
       if (hud.inspecting) return;
     }
-    world.moveHero(hit.i, hit.j, hit.x, hit.z);  });
+    world.moveHero(hit.i, hit.j, hit.x, hit.z);
+  });
 
-  // Desktop convenience: preview the tile and its true coverage under the cursor.
-  // On touch there is no hover, so the overlay only appears on the tap that
-  // places -- one of several reasons TDD 14 insists this gets tested on a phone.
+  // Desktop convenience: while something is armed and nothing has been tapped
+  // yet, the footprint follows the cursor. Touch has no hover, so there it is
+  // the tap that first puts a footprint on the ground -- which is exactly why
+  // the tap only proposes and a separate button confirms.
   const onPointerMove = e => {
-    if (world.phase === PHASE.INTRO) { ghost.hide(); return; }
-    const placingCastle = world.phase === PHASE.CASTLE;
-    if (!placingCastle && (world.phase !== PHASE.BUILD || !hud.selected)) { ghost.hide(); return; }
+    if (!hud.arming || hud.pending) return;
     const hit = pick(e.clientX, e.clientY, rect());
-    if (!hit) { ghost.hide(); return; }
-    if (placingCastle) {
-      // No coverage probe: the castle's own guns are not the point of the
-      // decision. Where it sits, and what can reach it, is.
-      ghost.show(hit.i, hit.j, world.structures.canPlaceCastle(hit.i, hit.j),
-                 null, config.castle.footprint);
-      return;
-    }
-    ghost.show(hit.i, hit.j, world.structures.canPlace(hit.i, hit.j), probeCoverage, 1);
+    if (hit) hud.hover(hit.i, hit.j); else hud.clearHover();
   };
   view.canvas.addEventListener('pointermove', onPointerMove);
+  // Leaving the canvas drops the preview rather than stranding it on the last
+  // tile the cursor happened to cross.
+  const onPointerLeave = () => hud.clearHover();
+  view.canvas.addEventListener('pointerleave', onPointerLeave);
+
+  // The ground preview shows a placement being CONSIDERED -- hovered, or tapped
+  // and awaiting confirmation -- and nothing else. Outside those moments there
+  // is no overlay on the board at all.
+  //
+  // It was briefly anchored to the king instead, which meant it was on for the
+  // whole build phase -- and a permanent slab of UI parked on the character you
+  // are trying to look at is worse than no preview. Coverage is wanted at the
+  // moment of decision, not continuously.
+  //
+  // Rebuilding the coverage mesh means probing every land tile, so it is redone
+  // only when the footprint actually moves. A hover that crosses fifty pixels
+  // inside one tile costs nothing.
+  let ghostKey = '';
+  function updateGhost() {
+    const spot = hud.pending || hud.hovered;
+    if (!spot) { ghostKey = ''; ghost.hide(); return; }
+    const key = `${spot.i}:${spot.j}:${spot.valid}:${spot.type}:${spot.span}`;
+    if (key === ghostKey) return;
+    ghostKey = key;
+    // No coverage probe for the castle: its own guns are not what the siting
+    // decision is about. Where it sits, and what can reach it, is.
+    const probe = spot.type ? probeCoverage : null;
+    ghost.show(spot.i, spot.j, spot.valid, probe, spot.span);
+  }
 
   const loop = createLoop({
     hz: config.sim.HZ,
@@ -249,6 +262,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       coinView.sync(world, blend);
       heroView.sync(world, blend, elapsed);
 
+      updateGhost();
       view.draw();
       hud.update(elapsed);
     }
@@ -263,17 +277,17 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
     onReady: () => world.ready(),
     hasNextLevel: !!nextId,
     onNextLevel: () => { if (nextId) go(nextId); },
-    // Tile boundaries show while placing, so buildable space is unambiguous
-    // (TDD 16), and disappear the moment nothing is selected.
-    onSelectTower: type => {
-      scene.gridMesh.visible = !!type || world.phase === PHASE.CASTLE;
-      if (!type) ghost.hide();
-    }
+    // Tile boundaries are on exactly while a placement is armed -- for towers
+    // and for the castle alike. They answer "which square am I aiming at", so
+    // they belong to placement mode rather than to the whole build phase, and
+    // taking them away again is part of what makes disarming feel like putting
+    // the map back down.
+    onSelectTower: armed => { scene.gridMesh.visible = !!armed; }
   });
 
-  // Tile boundaries are on from the start, because the first thing the player
-  // does is site a 2x2 castle and they need to see the grid to do it.
-  scene.gridMesh.visible = true;
+  // Off until placement is armed. The arrival opens on the island, not on a
+  // worksheet.
+  scene.gridMesh.visible = false;
 
   loop.start();
 
@@ -294,6 +308,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       loop.stop();
       unitView.clearReactions();
       view.canvas.removeEventListener('pointermove', onPointerMove);
+      view.canvas.removeEventListener('pointerleave', onPointerLeave);
       hud.dispose();
       view.dispose();
     }

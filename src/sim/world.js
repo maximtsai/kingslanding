@@ -381,7 +381,12 @@ export function createWorld(board) {
       return;
     }
 
-    if (world.phase === PHASE.BUILD) {
+    // CASTLE runs on the build rules rather than freezing everything. Siting is
+    // ARMED, not automatic (TDD 4): until the castle button is pressed a tap
+    // means move the king, so the opening beat is walking the island and reading
+    // it -- which is the decision the siting is about. Towers and coins cannot
+    // exist yet during CASTLE, so the rest of this branch is genuinely nothing.
+    if (world.phase === PHASE.BUILD || world.phase === PHASE.CASTLE) {
       for (const t of structures.towers()) {
         if (t.building > 0) t.building = Math.max(0, t.building - dt);
       }

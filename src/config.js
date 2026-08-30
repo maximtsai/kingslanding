@@ -145,7 +145,7 @@ export const config = {
     name: 'Castle',
     footprint: 2,              // 2x2 tiles, all level, all empty
     hp: 420,
-    range: 5.0,
+    range: 3.5,
     minRange: 0,               // TDD 4: explicitly none
     damage: 8,
     arrowsPerVolley: 2,
@@ -173,7 +173,7 @@ export const config = {
     archer: {
       name: 'Archer Tower', line: 'archer', tier: 1,
       cost: 40, hp: 100,
-      range: 4.5, minRange: 0.5,
+      range: 2.5, minRange: 0.5,
       damage: 9, arrowsPerVolley: 2, fireInterval: 1.15,
       arrowSpeed: 8.5, trajectory: 'arc',
       buildTime: 1.5,
@@ -488,7 +488,7 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
   // Driven by an `intro` block in the level; a level without one opens straight
   // on castle siting. See sim/intro.js.
   intro: {
-    sailSeconds: 4.0,          // spawn to grounding
+    sailSeconds: 3,            // spawn to grounding; slightly faster arrival
     // Magnification at the start, relative to the default framing, and well
     // inside ZOOM_MIN -- the cutscene is allowed past what the player may do.
     //

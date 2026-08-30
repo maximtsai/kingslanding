@@ -1115,14 +1115,39 @@ export function createGhostView(THREE, board, dynamicRoot) {
   coverage.visible = false;
   dynamicRoot.add(coverage);
 
+  // The footprint marker, drawn as a FILL OVER AN OUTLINE: a slightly larger
+  // dark plane underneath, and the tinted fill on top of it. The outline is
+  // what makes this survive contact with the art -- 34% white on light grass,
+  // which is what this used to be, is very close to invisible.
+  //
+  // It stopped being allowed to be subtle when the king became the build cursor
+  // (TDD 16). It used to appear only while a mode was armed, so the player was
+  // already hunting for it; now it is on for the whole build phase and it IS
+  // the answer to "where will this go", so it has to be readable at a glance
+  // over grass, stone and sand alike.
+  const markerGroup = new THREE.Group();
+  markerGroup.rotation.x = -Math.PI / 2;
+  markerGroup.visible = false;
+  dynamicRoot.add(markerGroup);
+
+  const outline = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0x14202a, transparent: true, opacity: 0.5, depthTest: false })
+  );
+  outline.renderOrder = 4;
+  markerGroup.add(outline);
+
   const marker = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.94, 0.94),
+    new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.34, depthTest: false })
   );
-  marker.rotation.x = -Math.PI / 2;
-  marker.renderOrder = 4;
-  marker.visible = false;
-  dynamicRoot.add(marker);
+  marker.position.z = -0.004;      // toward the camera; the group is rotated flat
+  marker.renderOrder = 5;
+  markerGroup.add(marker);
+
+  // Border width in tiles, held constant as the footprint grows: a 2x2 castle
+  // preview should not get a border twice as thick as a 1x1 tower's.
+  const BORDER = 0.07;
 
   const COVERED = [1.0, 1.0, 1.0];        // in range, in sight
   const DEAD = [0.76, 0.21, 0.18];        // inside the minimum-range dead zone
@@ -1146,12 +1171,18 @@ export function createGhostView(THREE, board, dynamicRoot) {
     show(i, j, valid, probe, span) {
       const size = span || 1;
       const y = board.topY(i, j) + 0.02;
-      marker.visible = true;
-      marker.scale.set(size, size, 1);
+      markerGroup.visible = true;
       // Anchored at (i, j), so a 2x2 preview covers the tiles it would occupy.
-      marker.position.set(board.px(i + (size - 1) / 2), y + 0.006, board.px(j + (size - 1) / 2));
-      marker.material.color.setHex(valid ? 0xffffff : 0xc2352f);
-      marker.material.opacity = valid ? 0.34 : 0.42;
+      markerGroup.position.set(board.px(i + (size - 1) / 2), y + 0.006, board.px(j + (size - 1) / 2));
+      const fill = size - 0.06;
+      marker.scale.set(fill, fill, 1);
+      outline.scale.set(fill + BORDER * 2, fill + BORDER * 2, 1);
+      // GOLD for a legal spot, not white. Gold is what every other affordance in
+      // this HUD uses for "yours" and "spendable", and against green grass it
+      // separates far better than a white wash does.
+      marker.material.color.setHex(valid ? 0xf2c14e : 0xc2352f);
+      marker.material.opacity = valid ? 0.42 : 0.5;
+      outline.material.color.setHex(valid ? 0x14202a : 0x3d0f0c);
 
       if (!valid || !probe) { coverage.visible = false; return; }
 
@@ -1173,7 +1204,7 @@ export function createGhostView(THREE, board, dynamicRoot) {
       coverage.visible = positions.length > 0;
     },
     hide() {
-      marker.visible = false;
+      markerGroup.visible = false;
       coverage.visible = false;
     }
   };

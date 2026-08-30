@@ -81,6 +81,11 @@ export function createHero(world, flowHero) {
   // order can be validated and ready when the animation unlocks.
   // Structures he may not walk onto. Arrow towers and barricades are
   // deliberately pass-through for the king alone (see towerHitboxHalfExtent).
+  //
+  // Must agree with isHeroBlocked in world.js: that one decides where a path may
+  // run, this one decides whether a destination is legal, and a disagreement
+  // between them shows up as a tile he will accept an order for but cannot
+  // actually route to.
   function blockedForHero(i, j) {
     const blocker = world.structures.at(i, j);
     return !!blocker &&
@@ -448,7 +453,7 @@ export function createHero(world, flowHero) {
       hero.safeX = hero.x; hero.safeZ = hero.z;
       hero.y = board.groundYAt(i, j) - config.board.SINK;
       hero.px = hero.x; hero.pz = hero.z; hero.py = hero.y;
-      hero.goal = null; hero.field = null;
+      hero.goal = null; hero.field = null; hero.waypoint = null;
     },
     damage(amount) {
       if (!hero.alive) return;

@@ -183,6 +183,9 @@ export function createSeparation(board, structures) {
     separate(units);
     for (const u of units) {
       if (!u.alive || u.state === 'boat') continue;
+      // A trapped raider is standing inside a building ON PURPOSE (see
+      // waves.js). Shoving it out would undo the one thing that state is for.
+      if (u.trapped) continue;
       pushOutOfStructures(u);
       // Final guarantee: whatever the passes above did, a unit ends the frame on
       // ground it could legally stand on.

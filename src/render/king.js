@@ -113,7 +113,7 @@ export function createKingRig(THREE, kit, P) {
     leg.position.y = -0.18; addOutlined(leg, 18, hip);
 
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.14, 0.49, 0);
+    shoulder.position.set(side * 0.155, 0.49, 0);
     torso.add(shoulder); shoulders[k] = shoulder;
     const arm = bevelBox(0.055, 0.075, 0.24, 0, P.king);
     arm.position.y = -0.24; arm.rotation.z = side * 0.16; addOutlined(arm, 18, shoulder);
@@ -177,8 +177,17 @@ export function createKingRig(THREE, kit, P) {
   const belt = bevelBox(0.215, 0.145, 0.045, 0, P.crown);
   belt.position.y = 0.3; addOutlined(belt);
   // Carried in the right hand, so it rides that shoulder rather than the torso.
-  const bow = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 3, 8, Math.PI * 1.1), mat(0x5c4a30));
-  bow.position.set(-0.01, -0.19, 0.05); bow.rotation.set(0, Math.PI / 2, 0.35);
+  // Same construction fault the enemy archer's bow had: a torus arc starts at
+  // +X and sweeps round, so standing it up with a bare rotation.y left the
+  // belly pointing at the sky and the bow hooping over his head. Centre the arc
+  // on +X, then swing +X to +Z -- the way he faces. See rigs.js for the long
+  // version; this is the same fix on his own geometry.
+  const KING_BOW_ARC = Math.PI * 1.1;
+  const kingBowGeo = new THREE.TorusGeometry(0.16, 0.018, 3, 8, KING_BOW_ARC);
+  kingBowGeo.rotateZ(-KING_BOW_ARC / 2);
+  kingBowGeo.rotateY(-Math.PI / 2);
+  const bow = new THREE.Mesh(kingBowGeo, mat(0x5c4a30));
+  bow.position.set(-0.01, -0.19, 0.05); bow.rotation.z = 0.35;
   addOutlined(bow, 16, shoulders[1]);
 
   root.scale.setScalar(0.54 * 1.15);

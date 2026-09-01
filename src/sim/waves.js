@@ -203,6 +203,7 @@ export function createWaves(world) {
     if (!u) return false;
 
     const [li, lj] = boat.land;
+    const REACH = W.disembarkReach;
     let toX = li, toZ = lj, found = false;
     const validSpot = (x, z, keepApart) => {
       if (!board.isWalkable(x, z)) return false;
@@ -211,7 +212,7 @@ export function createWaves(world) {
     };
     for (let attempt = 0; attempt < 24; attempt++) {
       const angle = Math.random() * Math.PI * 2;
-      const radius = 0.12 + Math.random() * 0.7;
+      const radius = 0.12 + Math.random() * (REACH - 0.12);
       const x = li + Math.cos(angle) * radius;
       const z = lj + Math.sin(angle) * radius;
       if (!validSpot(x, z, true)) continue;
@@ -223,26 +224,40 @@ export function createWaves(world) {
     // after touchdown.
     for (let attempt = 0; !found && attempt < 24; attempt++) {
       const angle = Math.random() * Math.PI * 2;
-      const radius = Math.random() * 1.1;
+      const radius = Math.random() * REACH;
       const x = li + Math.cos(angle) * radius;
       const z = lj + Math.sin(angle) * radius;
       if (!validSpot(x, z, false)) continue;
       toX = x; toZ = z; found = true;
     }
-    // A fully occupied beach is unusual but legal. Search outward over land
-    // rather than falling back inside a structure.
-    for (let radius = 0; !found && radius <= board.N; radius++) {
-      for (let dj = -radius; dj <= radius && !found; dj++) {
-        for (let di = -radius; di <= radius; di++) {
-          if (Math.max(Math.abs(di), Math.abs(dj)) !== radius) continue;
-          const x = li + di, z = lj + dj;
-          if (!validSpot(x, z, false)) continue;
-          toX = x; toZ = z; found = true;
-          break;
-        }
+
+    // WALLED IN. There used to be a third pass here that searched outward over
+    // the whole board for any free land tile, which meant a raider whose beach
+    // had been built over could be set down most of an island away -- correct by
+    // the rules, and unmistakably a teleport to anyone watching.
+    //
+    // Nobody gets carried further than `disembarkReach` now. If there is no room
+    // inside it, the raider comes ashore anyway, on top of whatever is in the
+    // way, and is TRAPPED: it cannot walk, and it attacks the thing pinning it.
+    // Which is the honest outcome -- a landing party that finds a wall where the
+    // beach was does not commute to the far side of the island, it starts
+    // hacking. Breaking the wall frees it (see enemies.js).
+    let trapped = false;
+    if (!found) {
+      trapped = true;
+      // Jitter a little so a whole boatload does not stack on one point, but
+      // stay on walkable ground: standing inside a building is intended here,
+      // standing in the sea is not.
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * Math.min(0.35, REACH);
+        const x = li + Math.cos(angle) * radius;
+        const z = lj + Math.sin(angle) * radius;
+        if (!board.isWalkable(x, z)) continue;
+        toX = x; toZ = z;
+        break;
       }
     }
-    if (!found) { boat.unloadQueue.unshift(u); return false; }
     boat.landingSpots.push({ x: toX, z: toZ });
     u.disembark = {
       elapsed: 0,
@@ -250,6 +265,7 @@ export function createWaves(world) {
       toX, toZ,
       toY: board.groundYAt(toX, toZ) - config.board.SINK
     };
+    u.trapped = trapped;
     u.moving = false;
     u.facing = boat.facing;
     boat.activePassengers.push(u);
@@ -325,6 +341,21 @@ export function createWaves(world) {
           .filter(u => u.alive && u.state === 'boat')
           .sort((a, b) => b.boatOffset - a.boatOffset);
         world.events.push({ type: 'boatLanded', x: boat.x, z: boat.z });
+
+        // A hull coming ashore on a tile that has been built on wrecks what is
+        // standing there. Fortifications only -- see the note in config on why
+        // houses are exempt.
+        //
+        // The landing TILE, not the hull's resting position: the boat grounds
+        // short of the shoreline (groundingPullBack), so its own coordinates are
+        // out over the water and would find nothing.
+        const [li, lj] = boat.land;
+        const hit = world.structures.at(li, lj);
+        if (hit && hit.alive && hit.kind !== 'house') {
+          world.damageStructure(
+            hit, hit.maxHp * W.beachDamageFraction + W.beachDamageFlat, null);
+          world.events.push({ type: 'beached', structure: hit, x: boat.x, z: boat.z });
+        }
       }
 
       stepDisembarks(boat, dt);

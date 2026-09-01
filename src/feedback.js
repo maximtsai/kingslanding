@@ -75,6 +75,7 @@ export function createFeedback(world, audio, view, views) {
     structureHit() { audio.play('structureHit'); },
     structureDestroyed(e) {
       audio.play('structureDown');
+      if (V.structureView && V.structureView.demolish) V.structureView.demolish(e.structure);
       // The castle going down is the loudest thing that can happen on the
       // island, and it deserves to be felt rather than merely heard.
       jolt(e.structure && e.structure.kind === 'castle'

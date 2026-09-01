@@ -83,6 +83,9 @@ export function createEnemies(world, flowGround, combat) {
       // specs that declare an attackWindup; everything else still deals its
       // damage on the tick the cooldown expires.
       swing: null,
+      // Set when a raider had nowhere legal to land and came ashore inside a
+      // building anyway. It cannot walk while this holds; see step().
+      trapped: false,
       heroCooldown: 0,
       moving: false,
       footfall: 0,
@@ -224,6 +227,16 @@ export function createEnemies(world, flowGround, combat) {
 
     const spec = config.enemies[u.type];
     if (u.swing) stepSwing(u, spec, dt);
+
+    // TRAPPED: landed on top of a building because the beach was walled off.
+    // It attacks what it is standing in and goes nowhere until that thing is
+    // gone -- at which point the tile is free, so it frees itself. No timer and
+    // no special case to expire: the condition IS the structure.
+    if (u.trapped) {
+      const pin = world.structures.at(Math.round(u.x), Math.round(u.z));
+      if (pin && pin.alive) { u.aggro = pin; u.aggroKind = 'trapped'; }
+      else u.trapped = false;
+    }
     // Grunts cannot attack targets one full terrain tier above them. Keep this
     // separate from movement so they may still approach the higher ground, but
     // their melee strike is never applied across the elevation gap.

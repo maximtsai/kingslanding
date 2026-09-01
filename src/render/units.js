@@ -217,38 +217,67 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
   // torso twisting against it, and the whole body lunging into the blow.
   // Returns how far forward to shove the root, since only the caller knows
   // where in the world the unit is.
-  const SWING_RAISE = 1.25;     // rad, weapon shoulder at the top of the windup
-  const SWING_FOLLOW = -0.85;   // rad, where the strike carries it through to
+  // SIGNS MATTER HERE, and they were backwards. The weapon hangs entirely ABOVE
+  // the shoulder pivot, so a POSITIVE rotation about x carries it FORWARD and a
+  // negative one draws it back. The windup must therefore be negative -- blade
+  // back over the shoulder -- and the blow a positive sweep that brings the
+  // blade forward and down through the target.
+  //
+  // With the old values (raise +1.25, follow -0.85) the blade went forward on
+  // the windup and backward on the blow, which read exactly as it was: the unit
+  // shoving the butt of its sword at the wall.
+  const SWING_RAISE = -1.05;    // rad, blade drawn back over the shoulder
+  const SWING_CONTACT = 1.00;   // rad, where the blade is when the blow LANDS
+  const SWING_FOLLOW = 1.55;    // rad, where the follow-through carries it to
   const SWING_TWIST = 0.30;     // rad, torso counter-twist during the windup
-  const SWING_STRIKE = 0.30;    // fraction of recovery spent on the blow itself
+  const SWING_RAISE_FRAC = 0.45; // of the windup spent drawing back
+  const SWING_FOLLOW_FRAC = 0.28; // of the recovery spent completing the arc
   const SWING_LUNGE = 0.07;     // tiles, forward shove at the moment of contact
 
+  // THE BLADE HAS TO BE THROUGH THE TARGET AT `attackWindup`, not starting for
+  // it. The simulation lands damage at that instant, so if the pose only begins
+  // its forward sweep there, the blow connects while the sword is still behind
+  // the unit -- measured at 0.19 of a tile behind the hand at the frame the
+  // building took the hit.
+  //
+  // So the windup is split: the draw-back occupies the first 62% of it and the
+  // sweep runs through the remaining 38%, arriving forward exactly on contact.
+  // The recovery then carries the arc past the target and settles.
   function applySwingPose(joints, age, spec) {
     const W = spec.attackWindup, R = spec.attackRecovery;
+    const drawTo = W * SWING_RAISE_FRAC;
     let shoulder, twist, lunge = 0, drop = 0;
 
-    if (age < W) {
-      // WINDUP. Ease-out, so the weapon comes up fast and then hangs at the top
-      // for a beat -- the hang is what makes the strike feel like a decision
-      // rather than a twitch, and it is most of the "brief windup" being asked
-      // for here.
-      const p = Math.min(1, age / W);
+    if (age < drawTo) {
+      // DRAW BACK. Ease-out, so the weapon comes up fast and then hangs at the
+      // top for a beat -- the hang is what makes the strike read as a decision
+      // rather than a twitch.
+      const p = Math.min(1, age / drawTo);
       const raise = 1 - (1 - p) * (1 - p) * (1 - p);
       shoulder = SWING_RAISE * raise;
       twist = SWING_TWIST * raise;
+    } else if (age < W) {
+      // THE BLOW TRAVELLING. Mildly accelerating -- fastest at contact, but not
+      // so back-loaded that the sword crosses from behind the unit to in front
+      // of it inside a single frame, which a plain k*k did: the sweep window is
+      // only a tenth of a second, so the curve has to spend it rather than
+      // save it.
+      const k = (age - drawTo) / (W - drawTo);
+      const e = k * (0.4 + 0.6 * k);
+      shoulder = SWING_RAISE + (SWING_CONTACT - SWING_RAISE) * e;
+      twist = SWING_TWIST + (-0.22 - SWING_TWIST) * e;
+      drop = e;
     } else {
       const q = Math.min(1, (age - W) / R);
-      if (q < SWING_STRIKE) {
-        // THE BLOW. Ease-OUT rather than ease-in: the fastest movement is on
-        // the first frames, which is where the impact reads from.
-        const k = q / SWING_STRIKE;
-        const e = k * (2 - k);
-        shoulder = SWING_RAISE + (SWING_FOLLOW - SWING_RAISE) * e;
-        twist = SWING_TWIST + (-0.22 - SWING_TWIST) * e;
-        drop = e;
+      if (q < SWING_FOLLOW_FRAC) {
+        // FOLLOW THROUGH past the target rather than stopping dead on it.
+        const k = q / SWING_FOLLOW_FRAC;
+        shoulder = SWING_CONTACT + (SWING_FOLLOW - SWING_CONTACT) * k * (2 - k);
+        twist = -0.22;
+        drop = 1;
       } else {
         // RECOVERY. Settles back to rest quadratically, slowest at the end.
-        const r = (q - SWING_STRIKE) / (1 - SWING_STRIKE);
+        const r = (q - SWING_FOLLOW_FRAC) / (1 - SWING_FOLLOW_FRAC);
         shoulder = SWING_FOLLOW * (1 - r * r);
         twist = -0.22 * (1 - r * r);
         drop = 1 - r;

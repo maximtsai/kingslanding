@@ -508,6 +508,25 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     heroSeconds: 0.20
   },
 
+  // ---- demolition (TDD 15) ----
+  // Towers and barricades go out with a bang; houses leave a ruin and the castle
+  // ends the level, so neither uses this. The shape deliberately mirrors
+  // construction in reverse -- a building rises out of the ground shaking, with
+  // dust at its feet, and it leaves the same way.
+  demolition: {
+    flash: 0.20,        // s, the blast. Yellow for the first 45%, red after.
+    // World units. The red half expands to 1.35x this, so 0.75 puts the blast
+    // at about two tiles across at its widest -- big for a one-tile tower
+    // without swallowing the quarter of the island around it, which 1.35 did.
+    ring: 0.75,
+    sink: 0.55,         // s, from the blast to fully underground
+    depth: 1.30,        // world units it drops
+    shakeOffset: 0.05,  // world units of lateral judder while it goes down
+    shakeRate: 46,      // Hz
+    shakeTilt: 0.10,    // rad
+    dustPuffs: 12
+  },
+
   // ---- damage as fire (TDD 15) ----
   // Buildings report their health by burning instead of by wearing a gauge.
   // Ember count scales with damage taken, so a glance across the island says
@@ -778,6 +797,28 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
   // ---- waves (TDD 11) ----
   waves: {
     approachSeconds: 10,       // boat spawn to landfall
+    // ---- beaching damage ----
+    // A hull grounding on a tile someone built on wrecks what is there. Scaled
+    // AND flat, so it hurts a cheap wall and a expensive one in different ways:
+    // the percentage keeps it relevant against high-HP upgrades, and the flat
+    // part means a fresh Archer Tower does not shrug off being rammed.
+    //
+    // 55 is a little over half an Archer Tower's 100 HP, so one landing takes a
+    // fresh one to 30 (15 + 55 = 70 damage) and a second finishes it. Against a
+    // 150 HP barricade it is 77, about half. Against the castle, 118 of 420.
+    //
+    // HOUSES ARE EXEMPT. They are not the player's fortifications, they are the
+    // thing being defended, and the loss condition already counts them -- a boat
+    // deleting one on touchdown would take that decision away from the player
+    // before they could answer it.
+    beachDamageFraction: 0.15,
+    beachDamageFlat: 55,
+
+    // How far a disembarking raider may be placed from its boat's landing tile.
+    // Beyond about this it stops reading as stepping ashore and starts reading
+    // as teleporting -- which is exactly what it used to do when the beach was
+    // walled off: it hunted outward over the whole board for a free tile.
+    disembarkReach: 0.6,
     spawnRadius: 9,            // tiles from board centre; beyond the island
     minSpawnArc: 0.6,          // radians between two boats' spawn angles
     // Where the hull itself floats. Lower than it was, so the keel sits under

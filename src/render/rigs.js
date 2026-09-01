@@ -22,39 +22,39 @@
 // cool and green and gameplay warm and dark, so enemies cannot use colour to
 // separate themselves). That leaves shape and size to do all the work:
 //
-//   GRUNT   stocky, slightly stooped, pauldrons, round shield, short sword.
+//   GRUNT   stocky, slightly stooped, heavy legs, short sword.
 //   ARCHER  slighter, stooped, bow held across the body -- reads as "not melee".
-//   BRUTE   half again as tall and much wider, no helmet, a heavy club.
+//   BRUTE   half again as tall and much wider, a heavy club.
 //
 // All three share a long body over short, bent, splayed legs. The proportion is
 // deliberate and it is not human: legs are stumps, torsos are tall, and the
 // stance is braced. It reads as a crowd of thugs from above, where the legs are
 // mostly hidden by the body anyway and the torso is doing all of the work.
 //
-// THE GRUNT IS BULK WITHOUT HEIGHT, and that is the whole trick of it. It has to
-// separate from the archer (which it barely did -- 10.4 screen pixels against
-// 9.9 at maximum zoom, half a pixel apart) WITHOUT drifting toward the brute,
-// whose entire read is being the big one. So the grunt got wider and deeper and
-// lost a little height doing it: stocky rather than large. Size order is
-// preserved, aspect ratio is not.
+// THE GRUNT IS BULK WITHOUT HEIGHT, and that was the whole trick of it: separate
+// from the archer (which it barely did -- 10.4 screen pixels against 9.9 at
+// maximum zoom, half a pixel apart) WITHOUT drifting toward the brute, whose
+// entire read is being the big one. So it got wider and deeper and lost a little
+// height doing it: stocky rather than large.
 //
-// Four changes, in descending order of how far away they still work:
+// READ THIS BEFORE ADDING ANYTHING BACK. The grunt was given four legibility
+// devices and has since had three of them removed, one request at a time:
 //
-//   1. WIDE SHOULDERS. Pauldrons on the torso, not on the arm pivots, so they
-//      are armour rather than something that windmills when it walks. The game
-//      is played from a high angle, so shoulder span is most of the silhouette.
-//   2. A ROUND SHIELD with a bright iron boss. Enemies are near-black (TDD 15),
-//      which makes an unbroken dark blob the default failure. Weapons already
-//      break that rule usefully -- the sword blade and the brute's club head are
-//      both bright -- and a light disc off one side is legible at a size where
-//      no amount of body shaping is. It is also the melee read: shield means
-//      "walks at you", against the archer's upright bow.
-//   3. A SLIGHT STOOP. Its own group between bob and torso, because every
-//      animator path -- gait, hit reaction, death, disembark -- writes
-//      torso.rotation ABSOLUTELY and would erase a pitch stored there. Kept
-//      small: enough to lean into the walk, not enough to read as a crouch.
-//   4. NO NECK. The head sinks between the pauldrons, which is most of what
-//      separates a heavy man from a merely wide one.
+//   1. WIDE SHOULDERS -- pauldrons. REMOVED. They were the single biggest thing
+//      this figure did at distance, because the game is watched from a high
+//      angle where shoulder span is most of a silhouette. Without them its
+//      widest point is its own torso: half-width 0.110 tiles down to 0.071.
+//   2. A ROUND SHIELD with a bright iron boss. REMOVED, after the silver helm
+//      took over its job of being the one light mark on a dark figure.
+//   3. A BARE HEAD on the brute, as the contrast against the grunt's helmet.
+//      GONE -- every enemy is helmed now.
+//   4. A SLIGHT STOOP. Still here. Its own group between bob and torso, because
+//      every animator path -- gait, hit reaction, death, disembark -- writes
+//      torso.rotation ABSOLUTELY and would erase a pitch stored there.
+//
+// What actually separates a grunt from an archer today is torso width (0.227
+// against 0.149) and sword-versus-bow. That is thinner than it looks written
+// down, and it is the thing to check first if the two ever read as one unit.
 
 // One dial for the size of every enemy, applied to the rig only -- the
 // simulation's push and hit radii are authored separately in config and are NOT
@@ -123,15 +123,18 @@ const TYPES = {
     // overhanging box helmet, and that overhang is gone -- the dome is only
     // 1.12x the head now, so the old value left a pin head on a very wide body.
     head: 0.122, headY: 0.390,
-    thigh: [0.070, 0.083, 0.062], shin: [0.062, 0.076, 0.057],
+    // Legs 15% larger in every dimension -- thicker AND longer. Lengthening
+    // them moves the skeleton, so hipY below had to be recomputed from the new
+    // reach or the feet would have driven into the ground by 0.017.
+    thigh: [0.081, 0.095, 0.080], shin: [0.071, 0.087, 0.074],
     // Purely cosmetic: both leg meshes are drawn this much longer than the
     // segment they represent, growing TOWARD each other across the knee. The
     // hip, the knee and the foot do not move, so the gait, the foot contact and
     // every hipY calculation are untouched -- the legs simply overlap at the
     // joint instead of butting exactly, which fills the wedge of daylight that
     // a bent knee opens on its outside edge.
-    legOverlap: 0.011,
-    hipX: 0.085, hipY: 0.116,
+    legOverlap: 0.015,
+    hipX: 0.085, hipY: 0.150,
     arm: [0.055, 0.066, 0.185], shoulderX: 0.128, shoulderY: 0.384,
     armCant: 0.20,
     // Radians of forward pitch. 17 degrees read as a crouch rather than a
@@ -139,7 +142,16 @@ const TYPES = {
     // The sword counter-rotates by whatever this is (see below), so the two
     // cannot drift apart.
     hunch: 0.06,
-    pauldron: [0.095, 0.128, 0.066], // [width, depth, height], one per shoulder
+    // No shoulder pads. The old value was [0.095, 0.128, 0.066]; the build path
+    // below is intact, so restoring them is a matter of putting it back.
+    //
+    // Worth knowing what this costs: they were introduced as the single biggest
+    // thing the grunt did for legibility, because the game is watched from a
+    // high angle where shoulder span is most of a silhouette. Without them the
+    // grunt's widest point is its own torso, which drops its half-width from
+    // 0.110 tiles to 0.071 -- and takes the crowding overlap that was being
+    // watched here from 0.060 of a tile to nothing at all.
+    pauldron: null,
     // No shield. It was carried for its iron boss -- "one bright speck on an
     // otherwise near-black figure" -- and the silver helm took that job away
     // from it, so it was paying two draw calls for a mark that no longer marked
@@ -152,8 +164,8 @@ const TYPES = {
     scale: 0.43 * UNIT_SIZE_MULTIPLIER,
     body: [0.149, 0.098, 0.276], bodyY: 0.165,
     head: 0.125, headY: 0.422,
-    thigh: [0.049, 0.064, 0.069], shin: [0.044, 0.058, 0.063],
-    hipX: 0.059, hipY: 0.129,
+    thigh: [0.049, 0.064, 0.078], shin: [0.044, 0.058, 0.071],
+    hipX: 0.059, hipY: 0.145,
     arm: [0.044, 0.054, 0.185], shoulderX: 0.102, shoulderY: 0.411,
     armCant: 0.10,              // arms tucked in: he is holding a bow, not a spear
     weapon: 'bow'
@@ -162,8 +174,8 @@ const TYPES = {
     scale: 0.62 * UNIT_SIZE_MULTIPLIER,
     body: [0.255, 0.162, 0.345], bodyY: 0.187,
     head: 0.15, headY: 0.510,
-    thigh: [0.078, 0.095, 0.089], shin: [0.069, 0.085, 0.081],
-    hipX: 0.090, hipY: 0.166,
+    thigh: [0.078, 0.095, 0.100], shin: [0.069, 0.085, 0.091],
+    hipX: 0.090, hipY: 0.186,
     arm: [0.066, 0.081, 0.235], shoulderX: 0.158, shoulderY: 0.492,
     armCant: 0.26,              // arms hang wide off a heavy frame
     weapon: 'club'
@@ -186,26 +198,44 @@ export function createRigFactory(THREE, kit, P) {
   const { mat, bevelBox } = kit;
 
   // Geometry shared across every figure of a type. Built once.
-  const swordShape = new THREE.Shape();
-  swordShape.moveTo(-0.032, -0.22);
-  swordShape.lineTo(-0.046, 0.11);
-  swordShape.lineTo(0, 0.245);
-  swordShape.lineTo(0.046, 0.11);
-  swordShape.lineTo(0.032, -0.22);
-  swordShape.closePath();
-  const swordBladeGeo = new THREE.ExtrudeGeometry(swordShape, {
-    depth: 0.018, bevelEnabled: false
-  });
-  swordBladeGeo.translate(0, 0, -0.012);
-  const swordGripGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.14, 5);
-  const swordGuardGeo = new THREE.BoxGeometry(0.17, 0.035, 0.04);
-  const swordPommelGeo = new THREE.OctahedronGeometry(0.035, 0);
+  // A straight blade and a grip. No guard, no pommel, no taper -- at the size
+  // this is read at, every one of those was a pixel of noise pretending to be
+  // detail, and the leaf-shaped extrusion it replaces cost three extra draws to
+  // say nothing.
+  //
+  // THE ORIGIN IS THE HAND, and that is the important part, not the shape.
+  // Both pieces are translated to sit ENTIRELY ABOVE y=0, so the whole weapon
+  // hangs off one end. The old sword was centred on its blade with the hilt
+  // dangling below, which put the shoulder pivot in the MIDDLE of the weapon:
+  // swinging the shoulder see-sawed it, and on the forward half of the stroke
+  // the part travelling at the target was the pommel. A sword whose hilt leads
+  // is the one thing a melee animation cannot get away with.
+  const swordGripGeo = new THREE.BoxGeometry(0.028, 0.090, 0.028);
+  swordGripGeo.translate(0, 0.045, 0);
+  const swordBladeGeo = new THREE.BoxGeometry(0.050, 0.300, 0.016);
+  swordBladeGeo.translate(0, 0.240, 0);
   // Deliberately oversized. Measured at maximum zoom-in, a grunt stands 10.4
   // screen pixels tall and an archer 9.9 -- half a pixel apart, which is to say
   // identical. Size cannot separate them and colour is spoken for (TDD 15 gives
   // enemies near-black), so the read has to come from shape: a tall upright bow
   // that breaks the head line and is visible as a bar beside the body.
-  const bowGeo = new THREE.TorusGeometry(0.165, 0.016, 3, 9, Math.PI * 1.25);
+  // A TorusGeometry arc begins at +X and sweeps counterclockwise in the XY
+  // plane, so as built this bow's belly points 113 degrees round from +X -- not
+  // along it. Standing the mesh up with a bare rotation.y (which is what this
+  // did) therefore put the arc's midpoint at the TOP: the bow hooped over the
+  // archer's head like a croquet gate instead of standing beside him. That is
+  // the ninety degrees that were wrong, and it was wrong on the king too.
+  //
+  // Fixed on the geometry rather than the mesh, so both bows are built correct
+  // and their rotations are left to say only what tilt they are held at.
+  // rotateZ centres the arc on +X; rotateY(-90) swings +X to +Z, which is the
+  // direction a figure faces. Limbs end up at +/-Y and the belly points forward.
+  const BOW_ARC = Math.PI * 1.25;
+  const bowGeo = new THREE.TorusGeometry(0.165, 0.016, 3, 9, BOW_ARC);
+  bowGeo.rotateZ(-BOW_ARC / 2);
+  bowGeo.rotateY(-Math.PI / 2);
+  // Where the string has to sit: the chord joining the two limb tips.
+  const BOW_CHORD_Z = 0.165 * Math.cos(BOW_ARC / 2);
   // ---- head and helm -------------------------------------------------------
   //
   // A BLACK BALL UNDER A SILVER SPECTACLE HELM, after the Gjermundbu type: a
@@ -440,23 +470,16 @@ export function createRigFactory(THREE, kit, P) {
     const right = shoulders[1];
     if (T.weapon === 'sword') {
       const sword = new THREE.Group();
-      sword.position.set(0.025, -0.04, 0.015);
+      // Where the hand would be if this figure had an arm: below the shoulder
+      // and forward of the ribs. Everything above hangs off it.
+      sword.position.set(0.025, -0.180, 0.095);
       // Counter-pitched against the hunch so the blade still stands UP. The
       // bright vertical stroke of a raised blade was the one part of the old
       // figure that read at distance, and leaning the torso forward without
       // this quietly laid it over and threw that away.
-      sword.rotation.set(-(T.hunch || 0), 0, -0.28);
-      const blade = new THREE.Mesh(swordBladeGeo, ironMat);
-      sword.add(blade);
-      const guard = new THREE.Mesh(swordGuardGeo, woodMat);
-      guard.position.y = -0.235;
-      sword.add(guard);
-      const grip = new THREE.Mesh(swordGripGeo, darkWoodMat);
-      grip.position.y = -0.32;
-      sword.add(grip);
-      const pommel = new THREE.Mesh(swordPommelGeo, ironMat);
-      pommel.position.y = -0.405;
-      sword.add(pommel);
+      sword.rotation.set(-(T.hunch || 0), 0, -0.20);
+      sword.add(new THREE.Mesh(swordGripGeo, darkWoodMat));
+      sword.add(new THREE.Mesh(swordBladeGeo, ironMat));
       right.add(sword);
     } else if (T.weapon === 'bow') {
       // Stood on end alongside the body, reaching above the head. From directly
@@ -464,19 +487,21 @@ export function createRigFactory(THREE, kit, P) {
       // it is a vertical stroke the eye separates from a spear instantly.
       const bow = new THREE.Mesh(bowGeo, darkWoodMat);
       bow.position.set(0.03, 0.01, 0.05);
-      bow.rotation.set(0, Math.PI / 2, 0.12);
+      bow.rotation.z = 0.12;              // a slight cant, nothing more
       right.add(bow);
       // Bowstring: one thin box closing the arc, which is what stops it reading
-      // as a random curve.
+      // as a random curve. Parented to the BOW rather than the shoulder, and
+      // placed on the computed chord, so it cannot drift out of the arc if the
+      // bow is ever re-aimed.
       const string = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.30, 0.008), woodMat);
-      string.position.set(0.03, 0.01, -0.10);
-      right.add(string);
+      string.position.set(0, 0, BOW_CHORD_Z);
+      bow.add(string);
     } else if (T.weapon === 'club') {
       const shaft = new THREE.Mesh(clubShaftGeo, darkWoodMat);
-      shaft.position.set(0.02, -0.16, 0.02); shaft.rotation.z = -0.3;
+      shaft.position.set(0.02, -0.16, 0.085); shaft.rotation.z = -0.3;
       right.add(shaft);
       const head2 = new THREE.Mesh(clubHeadGeo, ironMat);
-      head2.position.set(0.10, -0.02, 0.02); head2.rotation.z = -0.3;
+      head2.position.set(0.10, -0.02, 0.085); head2.rotation.z = -0.3;
       right.add(head2);
     }
 

@@ -59,19 +59,39 @@
 
   /* ---- top ---- */
   #top-left { top: 28px; left: 28px; display: flex; flex-direction: column; gap: 10px; }
+  /* The phase pill and the gold pill are deliberately built to the same
+     numbers -- 34px type, a 32px disc, matching gap and padding -- so the two
+     read as one family of readout sitting along the top edge rather than as two
+     unrelated widgets that happen to share a corner. Change one, change both. */
   .badge {
-    display: flex; align-items: center; gap: 10px;
-    background: rgba(255,255,255,.86); border-radius: 999px; padding: 8px 18px 8px 10px;
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(255,255,255,.86); border-radius: 999px; padding: 10px 22px 10px 12px;
   }
-  .badge .dot { width: 26px; height: 26px; border-radius: 50%; background: var(--red); }
-  .badge .label { font-size: 20px; font-weight: 800; letter-spacing: .06em; color: #2a2a30; }
-  .badge .sub { font-size: 20px; font-weight: 700; color: #8a8a92; }
+  .badge .dot { width: 32px; height: 32px; border-radius: 50%; background: var(--red); }
+  /* line-height:1 on both, matching #gold-value. Without it the badge inherits
+     `normal` and stands 12px taller than the gold pill on identical padding and
+     type -- which is the sort of mismatch that reads as sloppy without being
+     obvious enough to diagnose by eye. */
+  .badge .label { font-size: 31px; line-height: 1; font-weight: 800; letter-spacing: .06em; color: #2a2a30; }
+  .badge .sub { font-size: 31px; line-height: 1; font-weight: 700; color: #8a8a92; }
+  /* The phase and wave readout is centred on the SCREEN, not inside a
+     left-anchored column, so it needs a full-width row of its own to centre in.
+     Spanning the width is safe: .hud is pointer-events:none and only its
+     buttons take input back, so this cannot swallow clicks meant for the
+     controls it now stretches across. */
+  #top-centre {
+    top: 28px; left: 0; right: 0;
+    display: flex; justify-content: center;
+  }
+  #top-centre .badge .label,
+  #top-centre .badge .sub { text-align: center; }
   #gold {
-    display: inline-flex; align-items: center; gap: 9px; align-self: flex-start;
-    background: rgba(255,255,255,.86); border-radius: 999px; padding: 7px 18px 7px 9px;
+    position: absolute; top: 0; left: 0;
+    display: inline-flex; align-items: center; gap: 12px; align-self: flex-start;
+    background: rgba(255,255,255,.9); border-radius: 999px; padding: 10px 22px 10px 12px;
   }
-  #gold .coin { width: 22px; height: 22px; border-radius: 50%; background: var(--gold); }
-  #gold-value { font-size: 22px; font-weight: 900; color: #2a2a30; }
+  #gold .coin { width: 32px; height: 32px; border-radius: 50%; background: var(--gold); }
+  #gold-value { font-size: 31px; font-weight: 900; line-height: 1; color: #2a2a30; }
 
   #top-right { top: 28px; right: 28px; display: flex; flex-direction: column; gap: 10px; }
   .round {
@@ -263,39 +283,59 @@
      selected, rather than sitting beside it -- the bottom third is the only
      thumb-reachable space there is, and two panels competing for it is how a
      phone UI stops being usable. */
-  #tower-panel { display: none; flex-direction: column; gap: 12px; }
-  .tower-head { display: flex; align-items: baseline; gap: 10px; color: #e7eeef; }
-  .tower-head .name { font-size: 23px; font-weight: 900; letter-spacing: .04em; }
-  .tower-head .tier { font-size: 17px; font-weight: 900; color: var(--gold); letter-spacing: .12em; }
-  .tower-head .hp { margin-left: auto; font-size: 17px; font-weight: 800; color: rgba(231,238,239,.6); }
+  /* ---- the tower menu (TDD 7) ----
+     A RADIAL ON THE BUILDING, not a panel at the bottom of the screen. The
+     bottom strip is thumb-reachable, which is why the build bar lives there --
+     but a tower menu has a subject, and putting it on the subject means the
+     player never has to look away from the thing to read its options, or work
+     out which of six towers the panel is talking about.
 
-  #tower-options { display: flex; gap: 12px; }
-  .upgrade-button {
-    flex: 1; display: flex; flex-direction: column; gap: 5px; align-items: flex-start;
-    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
-    border-radius: 18px; padding: 13px 15px; cursor: pointer; color: #e7eeef;
-    font-family: inherit; text-align: left;
+     Three seats, fixed: the two upgrades up-left and up-right, sell below. Fixed
+     rather than distributed around the circle, so the same choice is always in
+     the same place and the gesture becomes muscle memory. A tower with one
+     upgrade leaves the second seat empty rather than re-centring the first. */
+  #tower-radial { left: 0; top: 0; display: none; }
+  #tower-radial .radial-ring {
+    position: absolute; left: -84px; top: -84px; width: 168px; height: 168px;
+    border-radius: 50%; border: 3px solid rgba(255,255,255,.20);
+    background: rgba(18,28,33,.34);
   }
-  .upgrade-button:hover { background: rgba(255,255,255,.13); }
-  .upgrade-button.poor { opacity: .4; }
+  .radial-btn {
+    position: absolute; width: 74px; height: 74px; margin: -37px 0 0 -37px;
+    border: 3px solid rgba(255,255,255,.30); border-radius: 50%;
+    background: rgba(24,36,42,.94); color: #e7eeef; cursor: pointer;
+    font-family: inherit; display: grid; place-items: center; gap: 1px;
+    padding: 0; line-height: 1;
+  }
+  .radial-btn:hover { background: rgba(38,56,64,.97); border-color: rgba(255,255,255,.5); }
+  .radial-btn.poor { opacity: .45; }
   /* TDD 5: WIDER means more projectiles, TALLER means more range and HP. The
-     panel says which one this is, so the grammar is taught rather than guessed. */
-  .upgrade-button .shape { font-size: 16px; font-weight: 900; letter-spacing: .16em; color: var(--gold); }
-  .upgrade-button .name { font-size: 19px; font-weight: 900; }
-  .upgrade-button .cost { font-size: 17px; font-weight: 800; opacity: .85; }
-  #tower-options .none {
-    flex: 1; padding: 13px 15px; font-size: 18px; font-weight: 800;
-    color: rgba(231,238,239,.45); border: 1px dashed rgba(255,255,255,.14);
-    border-radius: 18px;
-  }
+     menu says which, so the silhouette grammar is taught rather than guessed. */
+  .radial-btn .rb-shape { font-size: 15px; font-weight: 900; letter-spacing: .12em; color: var(--gold); }
+  .radial-btn .rb-cost { font-size: 19px; font-weight: 900; }
+  .radial-btn.radial-sell { border-color: rgba(214,73,66,.75); background: rgba(74,26,24,.94); }
+  .radial-btn.radial-sell:hover { background: rgba(104,34,31,.97); }
+  .radial-btn.radial-sell .rb-cost { color: var(--gold); }
 
-  .tower-foot { display: flex; gap: 12px; }
-  .tower-foot button {
-    border: 0; border-radius: 16px; padding: 12px 18px; cursor: pointer;
-    font-family: inherit; font-size: 18px; font-weight: 900; letter-spacing: .06em;
+  /* Seats. The two upgrades sit at +/-40 degrees above the horizontal and the
+     sell button straight down, on an 88px radius. */
+  #radial-opt-a { left: -67px; top: -57px; }
+  #radial-opt-b { left:  67px; top: -57px; }
+  #radial-sell  { left:   0px; top:  88px; }
+
+  /* Opening pops; closing SHRINKS AWAY and only then is display:none applied,
+     so a dismissed menu stops costing layout and paint entirely rather than
+     lingering as an invisible-but-live subtree. */
+  #tower-radial.opening { animation: radial-in .18s cubic-bezier(.2,1.5,.45,1); }
+  #tower-radial.closing { animation: radial-out .14s ease-in forwards; }
+  @keyframes radial-in {
+    from { transform: scale(.35); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
   }
-  #btn-takedown { flex: 1; background: rgba(194,53,47,.85); color: #fff; }
-  #btn-close-tower { flex: 0 0 110px; background: rgba(255,255,255,.12); color: #e7eeef; }
+  @keyframes radial-out {
+    from { transform: scale(1);   opacity: 1; }
+    to   { transform: scale(.30); opacity: 0; }
+  }
 
   #castle-prompt {
     display: none; flex-direction: column; gap: 6px; align-items: center;
@@ -429,15 +469,15 @@
     </div>
   </div>
 
-  <div class="hud" id="top-left">
+  <div class="hud" id="top-centre">
     <div class="badge">
       <div class="dot"></div>
       <div class="label" id="phase-label">BUILD</div>
       <div class="sub" id="phase-sub">1 / 6</div>
     </div>
-    <div class="badge" id="level-badge">
-      <div class="label" id="level-name">Level One</div>
-    </div>
+  </div>
+
+  <div class="hud" id="top-left">
     <div id="gold"><div class="coin"></div><div id="gold-value">0</div></div>
   </div>
 
@@ -450,6 +490,15 @@
 
   <div class="hud" id="wave-preview"></div>
   <div id="wave-start-title" aria-live="polite"></div>
+
+  <!-- Anchored to the structure, positioned every frame from hud.js. Scaling
+       happens on this element, so the seats scale with it as one piece. -->
+  <div class="hud" id="tower-radial">
+    <div class="radial-ring"></div>
+    <button class="radial-btn" id="radial-opt-a"></button>
+    <button class="radial-btn" id="radial-opt-b"></button>
+    <button class="radial-btn radial-sell" id="radial-sell"></button>
+  </div>
 
   <div class="hud" id="place-confirm" style="display:none">
     <button id="btn-confirm-place" aria-label="Confirm placement"></button>
@@ -475,18 +524,6 @@
       <button id="btn-ready">READY</button>
     </div>
 
-    <div id="tower-panel">
-      <div class="tower-head">
-        <div class="name" id="tower-name">Archer Tower</div>
-        <div class="tier" id="tower-tier">T1</div>
-        <div class="hp" id="tower-hp"></div>
-      </div>
-      <div id="tower-options"></div>
-      <div class="tower-foot">
-        <button id="btn-takedown">TAKE DOWN</button>
-        <button id="btn-close-tower">CLOSE</button>
-      </div>
-    </div>
 
     <div id="place-cancel-panel">
       <button id="btn-cancel-place" aria-label="Cancel building placement"></button>

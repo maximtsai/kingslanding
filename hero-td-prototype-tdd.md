@@ -271,6 +271,19 @@ pin head on a very wide body.
    is still half again the size of the others, which was always the stronger half
    of that read.
 
+**The grunt has now lost three of its four legibility devices**, one request at a
+time: the pauldrons (removed), the shield and its boss (removed), and the brute's
+bare-head contrast (gone when every enemy was helmed). Only the stoop remains.
+Without pauldrons its widest point is its own torso, taking its half-width from
+0.110 tiles to 0.071 -- which does at least retire the crowding overlap that was
+being tracked here, from 0.060 of a tile to nothing.
+
+What separates a grunt from an archer today is torso width (0.227 against 0.149)
+and sword-versus-bow. That is thinner than it reads written down, and it is the
+first thing to check if the two ever look like one unit in play. Its legs were
+enlarged 15% in compensation, which is mass low on the figure where the high
+camera sees it least.
+
 Cost: +4 InstancedMeshes overall (head, dome and guard is three meshes where the
 grunt and archer had two and the brute had one).
 
@@ -308,6 +321,160 @@ are visible: the weapon on its shoulder pivot, the torso twisting against it, an
 the whole body lunging into the blow. The pose reads the simulation's swing
 clock, so the animation and the damage cannot drift apart.
 
+**A WEAPON MUST HANG OFF ITS PIVOT, NOT STRADDLE IT.** The first sword was built
+centred on its blade with the hilt dangling below the origin, which put the
+shoulder pivot in the *middle* of the weapon. Swinging the shoulder see-sawed it,
+so on the forward half of the stroke the part travelling at the target was the
+pommel -- the unit read as shoving the butt of its sword at the wall. The sword
+is now built with its **origin at the hand** and both pieces translated entirely
+above it, so the whole weapon rotates about one end and the blade describes the
+long arc.
+
+Two further things fell out of measuring the swing rather than watching it:
+
+1. **The signs were inverted.** With the weapon above the pivot, positive
+   rotation about x carries it *forward*. The windup must therefore be negative.
+   The original values raised the blade forward and drove it backward.
+2. **The blade has to be through the target at `attackWindup`, not starting for
+   it.** The simulation lands damage at that instant; the pose began its forward
+   sweep there, so the blow connected with the sword still measured 0.19 of a
+   tile *behind* the hand. The windup is now split -- draw back over the first
+   45%, sweep through the remaining 55% -- arriving forward exactly on contact.
+   Measured lead (tip minus hand, along the facing): -0.338 drawn back, +0.328 at
+   contact, +0.239 at follow-through.
+
+A third fell out of that fix: the first sweep curve was `k * k`, which is so
+back-loaded that the blade crossed from behind the unit to in front of it inside
+roughly one frame. The sweep window is about a tenth of a second, so the easing
+has to *spend* it rather than save it -- `k * (0.4 + 0.6k)` gives 6.6 frames of
+visible travel at 60fps.
+
+The sword itself is now two boxes: a straight blade and a grip, no guard, no
+pommel, no taper. At the size these are read at, each of those was a pixel of
+noise pretending to be detail, and the leaf-shaped extrusion cost two extra draws
+to say nothing.
+
+### A hull coming ashore wrecks what was built on the beach
+
+A boat grounding on a tile that has been built on damages the structure there for
+**15% of its max HP plus a flat 55**. Scaled *and* flat, so it means something at
+both ends of the tower tree: the percentage keeps it relevant against high-HP
+upgrades, the flat part stops a fresh Archer Tower shrugging off being rammed.
+
+| | max HP | landing damage | share |
+|---|---|---|---|
+| Archer Tower | 100 | 70 | 70% |
+| Barricade | 150 | 77 | 52% |
+| Fortified | 220 | 88 | 40% |
+| Castle | 420 | 118 | 28% |
+
+Nothing is destroyed outright, which is the point of the flat term being a little
+*over* half an Archer Tower rather than at or under it: one landing takes a fresh
+one to 30 and threatens it, a second finishes the job. Walling a landing beach
+remains worth doing and stops being free.
+
+**Houses are exempt.** They are not the player's fortifications, they are the
+thing being defended, and the loss condition already counts them -- a boat
+deleting one on touchdown would settle that question before the player could
+answer it.
+
+**It reads `boat.land`, not the hull's position.** A boat grounds short of the
+shoreline by `groundingPullBack`, so its own coordinates are out over the water
+and would find nothing standing there.
+
+Verified across the exact landing frame, sampling HP on the tick before
+touchdown and the tick of it, so the landing party cannot contribute: an Archer
+Tower on a landing tile went 100 to 30 (exactly 70) and a house on one went 120
+to 120.
+
+*A first attempt measured HP twenty seconds after landing and saw a house down 63.
+That was nine grunt hits at 7 damage, not the beaching -- which the formula would
+have made 73. Any damage measurement taken later than the frame in question is
+measuring the whole wave.*
+
+### Nobody is carried further than half a tile ashore
+
+A disembarking raider is placed within `waves.disembarkReach` (0.6 tiles) of its
+boat's landing tile. There used to be a third fallback that searched outward over
+the **whole board** for any free land tile, so a landing party whose beach had
+been built over could be set down most of an island away -- correct by the rules,
+and unmistakably a teleport to anyone watching.
+
+**If there is no room inside that reach, the raider lands anyway, on top of
+whatever is in the way, and is TRAPPED.** It cannot walk and it attacks the thing
+pinning it. That is the honest outcome: a landing party that finds a wall where
+the beach was does not commute to the far side of the island, it starts hacking.
+
+**The state expires on its own, with no timer.** Each step re-reads the structure
+occupying the raider's tile: present and alive means stay pinned to it, gone
+means free. *The condition is the structure*, so breaking the wall releases the
+raider as a consequence rather than as a special case. Separation is told to skip
+trapped units -- shoving one out of the building would undo the only thing the
+state is for.
+
+Verified. Normal wave: four landings, worst 0.541 tiles from their own boat's
+tile, all inside the reach. Trapped: `state` attacking, aggro is the pin with
+kind `trapped`, drift **0.0000** over six seconds, and the barricade's HP falling
+while it happens; break the wall and `trapped` clears and the raider walks again.
+
+**Two things about testing this are worth keeping.**
+
+1. **The constant went into the wrong config block and nothing said so.** There
+   are two `stopOffset` keys -- one in `waves`, one in `intro` -- and the patch
+   anchored on the wrong one, so `disembarkReach` was defined on `intro` and read
+   as `undefined` from `waves`. That made every sampled radius `NaN`, every
+   candidate position invalid, and therefore every single raider trapped, on
+   every landing, blocked or not. It threw `reading 'NaN'` from the loop rather
+   than anywhere near the cause. **Anchor config patches on the block, not on a
+   key name that repeats.**
+2. **A dead unit looks exactly like a broken one.** Two rounds of apparent bugs --
+   aggro not pointing at the pin, the raider never freeing itself, never moving
+   again -- were a corpse. `enemies.step` returns immediately for the dead, so
+   every flag freezes at its last live value. The castle had been shooting the
+   test subject the whole time. Check `alive` before believing any state read off
+   a unit.
+
+### Towers go down; houses leave a ruin
+
+A destroyed tower plays a demolition: a **circular blast, yellow then red**, then
+the structure **sinks into the ground while juddering**, with **dust at its base**.
+It deliberately mirrors construction in reverse -- a building rises out of the
+ground shaking with dust at its feet, and it leaves the same way, reusing the
+same shake vocabulary and the same dust pool.
+
+**Towers only, and that is one check rather than a list.** A house leaves a ruin
+standing -- that *is* its destroyed state, and dropping it through the floor
+would delete the thing the ruin exists to say. The castle falling ends the level,
+so it is never seen going anywhere. Everything else is `kind === 'tower'`.
+
+**The blast is two instanced discs, not one whose colour is animated.** This
+Three build cannot vary colour per instance (the same `instanceColor` gap the
+embers work around), and several towers can be dying at once at different points
+in their flash. Two meshes, each drawing only the instances currently inside its
+half of the flash, gets yellow-then-red for two draws and no per-instance
+material.
+
+Render-only throughout: the simulation flips `alive` and moves on. The clock is a
+Map keyed by structure id, and the sync loop keeps drawing a dead tower for as
+long as its entry lives.
+
+**Two things found by testing rather than by writing:**
+
+1. **Stale clocks accumulated.** A structure sold, or wiped by a level restart,
+   leaves the list -- and the loop that advances demolitions only sees things
+   still *in* the list, so its entry never finished and never expired. It showed
+   up as `demolishing` reporting two ids when one tower had died. Cleaned up
+   against `liveStructures` alongside the health bars, which had needed the same
+   treatment for the same reason.
+2. **The first blast radius was three and a half tiles across** for a one-tile
+   tower, which at play zoom swallowed a quarter of the island. Sized by looking
+   at it at the zoom the game is actually played at, not the zoom it is authored
+   at -- the same lesson the embers taught.
+
+Verified: yellow then red then sink, in that order and at those times; a house
+destroyed produces no demolition and keeps its ruin; `demolish` refuses the
+castle outright; no leftover clocks after a wave; 60fps.
+
 ### Buildings burn instead of wearing a gauge
 
 **Only the castle keeps a health bar, and it is green.** Everything else reports
@@ -338,6 +505,47 @@ alongside.
 Verified: four buildings staged at 25/45/55/75% damage produced exactly
 `round(damage x max)` embers each, one visible bar, fill colour `#49c96a`. A full
 wave peaked at 17 embers and held 60fps.
+
+### Both bows were built ninety degrees wrong
+
+A `TorusGeometry` arc **begins at +X and sweeps counterclockwise in the XY
+plane**. So a 225-degree bow has its belly 113 degrees round from +X -- not along
+it. Standing such a mesh up with a bare `rotation.y = PI/2` therefore leaves the
+arc's midpoint pointing at the SKY: the bow hoops over the archer's head like a
+croquet gate instead of standing beside him. The king's bow had the identical
+fault, from the identical line.
+
+Fixed on the **geometry**, not the mesh: `rotateZ(-arc / 2)` centres the arc on
++X, then `rotateY(-PI/2)` swings +X to +Z, the direction a figure faces. Limbs
+end at +/-Y, belly forward. Each mesh's rotation is now left to say only what
+tilt the bow is held at, which is what a mesh rotation should be for.
+
+Verified by bounding box rather than by eye, because an isometric camera makes a
+correctly vertical bow *look* like it leans: a right bow is thin in x, tall in y,
+and offset forward in z. Enemy `0.028 x 0.362 x 0.246`, king `0.031 x 0.352 x
+0.206`. The old one was a flat disc in XY.
+
+*(A first attempt to check this grabbed the wrong mesh -- the scene holds two
+dozen ripple toruses, and taking the last match found one of those. Enumerate and
+identify by parameters when several objects share a geometry type.)*
+
+The bowstring is now parented to the bow and placed on the computed chord
+(`r * cos(arc / 2)`), so it cannot drift out of the arc if the bow is ever
+re-aimed.
+
+### Legs sit higher, and lengthen to pay for it
+
+Raising a hip lifts the feet with it -- there is no foot IK. So each enemy's hip
+went up about 12.5% **and its segments lengthened to match**, keeping the reach
+`(thigh + shin * cos(bend)) * cos(splay)` equal to the new `hipY`. Feet stay
+planted to within 0.0001 world units on all three types, and the gap between the
+leg tops and the body base closed as a side effect: grunt 0.029 to 0.012, archer
+0.036 to 0.020, brute 0.021 to 0.001.
+
+This is the rule that keeps recurring in this rig: **`hipY` is not a free
+parameter.** It is derived from the segment lengths and the two stance angles,
+and anything that touches one has to recompute it. Nothing at runtime will catch
+a mistake here; the figures will simply hover or sink.
 
 ### Armless, and the legs are drawn longer than they are
 

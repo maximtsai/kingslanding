@@ -330,10 +330,10 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     if (!world.build(type, pending.i, pending.j)) { feedback.denied(); return; }
     feedback.tap();
     clearPending();
-    // Stay armed so a run of towers is press-tap-confirm, tap-confirm,
-    // tap-confirm -- but drop the arming once the purse cannot cover another,
-    // so the bar never advertises something that can only be refused.
-    if (world.gold < config.towers[type].cost) setSelected(type);
+    // Disarm after every confirmed build so the bottom bar returns to the
+    // three-option build panel (archer, barricade, ready) rather than staying
+    // in placement mode. Each new build is a fresh deliberate choice.
+    setSelected(null);
   };
 
   for (const button of buildButtons) {
@@ -351,66 +351,131 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     setSelected(null); inspecting = null; refreshPanels(); onReady();
   });
 
-  // ---- the upgrade panel (TDD 5 and 7) ----
-  const towerPanel = $('tower-panel');
-  const towerName = $('tower-name');
-  const towerTier = $('tower-tier');
-  const towerHp = $('tower-hp');
-  const towerOptions = $('tower-options');
-  const takedown = $('btn-takedown');
+  // ---- the tower menu (TDD 5 and 7) ----
+  //
+  // A RADIAL ANCHORED TO THE BUILDING, not a panel at the bottom of the screen.
+  // A tower menu has a subject, and putting it on the subject means the player
+  // never looks away from the thing to read its options, or has to work out
+  // which of six towers a bottom panel is talking about.
+  //
+  // Three fixed seats: upgrades up-left and up-right, sell below. Fixed rather
+  // than distributed around the circle, so the same choice is always in the same
+  // place -- a tower with one upgrade leaves the second seat empty rather than
+  // re-centring the first and moving the target under the player's thumb.
+  const radial = $('tower-radial');
+  const radialSeats = [$('radial-opt-a'), $('radial-opt-b')];
+  const radialSell = $('radial-sell');
 
-  $('btn-close-tower').onclick = click(() => { inspecting = null; refreshPanels(); });
+  // The menu OUTLIVES `inspecting` by the length of its close animation. The
+  // record it is drawn for is held separately for exactly that reason: the
+  // simulation-facing state clears the instant the player taps away, while the
+  // visual shrinks out of the way over the next tenth of a second.
+  let radialFor = null;
+  let radialState = 'hidden';        // 'hidden' | 'open' | 'closing'
+  let radialCloseAge = 0;
+  const RADIAL_CLOSE = 0.14;         // seconds, matches the CSS animation
 
-  takedown.onclick = () => {
-    if (!inspecting) return;
-    world.sell(inspecting);
-    inspecting = null;
-    refreshPanels();
-  };
+  function seatLabel(button, top, bottom) {
+    button.textContent = '';
+    if (top !== null) {
+      const t = document.createElement('div');
+      t.className = 'rb-shape';
+      t.textContent = top;
+      button.appendChild(t);
+    }
+    const b = document.createElement('div');
+    b.className = 'rb-cost';
+    b.textContent = bottom;
+    button.appendChild(b);
+  }
 
   // Rebuilt on open and after every purchase, because an upgrade changes the
   // record in place: the same tower is now a different type with different
   // options and a different refund.
-  function drawTowerPanel() {
-    if (!inspecting || !inspecting.alive) { inspecting = null; return; }
-    const spec = config.towers[inspecting.type];
-    towerName.textContent = spec.name;
-    towerTier.textContent = 'T' + spec.tier;
-    towerHp.textContent = `${Math.ceil(inspecting.hp)} / ${inspecting.maxHp} hp`;
-    takedown.textContent = `TAKE DOWN  +${world.refundFor(inspecting)}`;
-
-    towerOptions.textContent = '';
-    const options = world.upgradeOptions(inspecting);
-    if (!options.length) {
-      const done = document.createElement('div');
-      done.className = 'none';
-      done.textContent = 'Fully upgraded.';
-      towerOptions.appendChild(done);
-      return;
-    }
-    for (const option of options) {
-      const button = document.createElement('button');
-      button.className = 'upgrade-button' + (option.affordable ? '' : ' poor');
-      // TDD 5's grammar, said out loud. The silhouette carries it on the island;
-      // the panel is where the player learns to read the silhouette.
-      const shape = document.createElement('div');
-      shape.className = 'shape';
-      shape.textContent = option.shape ? option.shape.toUpperCase() : 'UPGRADE';
-      const name = document.createElement('div');
-      name.className = 'name';
-      name.textContent = option.name;
-      const cost = document.createElement('div');
-      cost.className = 'cost';
-      cost.textContent = `${option.cost} gold`;
-      button.append(shape, name, cost);
-      button.onclick = () => {
+  function drawRadial() {
+    const record = radialFor;
+    if (!record || !record.alive) return;
+    const options = world.upgradeOptions(record);
+    radialSeats.forEach((seat, k) => {
+      const option = options[k];
+      if (!option) { seat.style.display = 'none'; seat.onclick = null; return; }
+      seat.style.display = 'grid';
+      seat.classList.toggle('poor', !option.affordable);
+      seat.title = `${option.name} -- ${option.cost} gold`;
+      seatLabel(seat, option.shape ? option.shape.toUpperCase() : null, String(option.cost));
+      seat.onclick = () => {
         // The upgrade itself emits towerUpgraded, which feedback turns into the
         // rising blip -- so only the refusal needs a sound from here.
-        if (world.upgrade(inspecting, option.type)) drawTowerPanel();
+        if (world.upgrade(record, option.type)) drawRadial();
         else feedback.denied();
       };
-      towerOptions.appendChild(button);
+    });
+    radialSell.title = `Take down for ${world.refundFor(record)} gold`;
+    seatLabel(radialSell, null, '+' + world.refundFor(record));
+    radialSell.onclick = () => {
+      feedback.tap();
+      world.sell(record);
+      inspecting = null;
+      refreshPanels();
+    };
+  }
+
+  // Glued to the structure, so it holds station while the camera pans, orbits
+  // and zooms underneath it.
+  function placeRadial() {
+    if (!radialFor) return;
+    const span = radialFor.span || 1;
+    const half = (span - 1) / 2;
+    const p = view.screenPositionOf(
+      radialFor.i + half, radialFor.j + half,
+      world.board.topY(radialFor.i, radialFor.j) + 0.85
+    );
+    radial.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`;
+  }
+
+  function openRadial(record) {
+    radialFor = record;
+    radialState = 'open';
+    radial.style.display = 'block';
+    radial.classList.remove('closing');
+    radial.classList.remove('opening');
+    void radial.offsetWidth;                 // restart the pop
+    radial.classList.add('opening');
+    drawRadial();
+    placeRadial();
+  }
+
+  function beginCloseRadial() {
+    if (radialState !== 'open') return;
+    radialState = 'closing';
+    radialCloseAge = 0;
+    radial.classList.remove('opening');
+    radial.classList.add('closing');
+  }
+
+  // Called every frame. Finishing the close with display:none is the whole
+  // point of animating it rather than snapping: a dismissed menu stops costing
+  // layout and paint instead of lingering as an invisible but live subtree.
+  function stepRadial(elapsed) {
+    if (radialState === 'open') {
+      if (!inspecting || inspecting !== radialFor || !radialFor.alive
+          || world.phase !== PHASE.BUILD) {
+        beginCloseRadial();
+      } else {
+        placeRadial();
+      }
+      return;
     }
+    if (radialState !== 'closing') return;
+    placeRadial();                            // keep it on the building as it shrinks
+    radialCloseAge += elapsed;
+    if (radialCloseAge < RADIAL_CLOSE) return;
+    radialState = 'hidden';
+    radialFor = null;
+    radial.style.display = 'none';
+    radial.classList.remove('closing');
+    for (const seat of radialSeats) seat.onclick = null;
+    radialSell.onclick = null;
   }
 
   // Which of the three bottom panels is showing. Called whenever anything that
@@ -434,12 +499,13 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     // that decision wants.
     previewBox.style.display = building && !!world.structures.theCastle() && !cutscene ? 'flex' : 'none';
     bottom.style.display = building || siting ? 'flex' : 'none';
-    buildPanel.style.display = building && !inspectingNow && !placingNow ? 'flex' : 'none';
-    towerPanel.style.display = inspectingNow ? 'flex' : 'none';
+    // The build bar stays up while a tower menu is open: the menu floats over
+    // the island rather than competing for the bottom strip, so there is no
+    // longer a reason to take the bar away.
+    buildPanel.style.display = building && !placingNow ? 'flex' : 'none';
     castlePrompt.style.display = siting && !placingNow ? 'flex' : 'none';
     cancelPanel.style.display = placingNow ? 'flex' : 'none';
     const nextBottomPanel = buildPanel.style.display !== 'none' ? buildPanel
-      : towerPanel.style.display !== 'none' ? towerPanel
       : castlePrompt.style.display !== 'none' ? castlePrompt
       : cancelPanel.style.display !== 'none' ? cancelPanel : null;
     if (nextBottomPanel !== shownBottomPanel) {
@@ -451,7 +517,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
         shownBottomPanel.classList.add('bottom-panel-pop');
       }
     }
-    if (inspectingNow) drawTowerPanel();
+    if (inspectingNow && radialFor !== inspecting) openRadial(inspecting);
     // Driven from here rather than only from setSelected, because the grid
     // depends on the PHASE as much as on the selection -- and returning to the
     // build phase after a wave changes the phase without changing the
@@ -505,12 +571,6 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     previewBox.textContent = '';
     threats.length = 0;
     if (!preview.length) return;
-
-    const label = document.createElement('div');
-    label.className = 'label';
-    const total = preview.reduce((n, b) => n + b.total, 0);
-    label.textContent = `INCOMING  ${total}`;
-    previewBox.appendChild(label);
 
     // Earliest landing first, so the badges read in the order they will happen.
     for (const boat of [...preview].sort((a, b) => a.delay - b.delay)) {
@@ -665,12 +725,12 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   let lastGold, lastWaveText, lastPoor;
   let shownBottomPanel = null;
 
-  $('level-name').textContent = world.board.level.name;
   refreshPanels();
 
   return {
     get selected() { return selected; },
     get inspecting() { return inspecting; },
+    get inspectingId() { return inspecting ? inspecting.id : null; },
     // The proposed spot, or null. Read by main to drive the ground ghost.
     get pending() { return pending; },
     clearSelection() { setSelected(null); },
@@ -739,6 +799,8 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
         }
       }
 
+      stepRadial(elapsed);
+
       // The confirm button is anchored to a tile, not to the screen, so it has
       // to be re-projected every frame -- the camera follows the king and can
       // be rotated and zoomed while a placement is still pending.
@@ -756,7 +818,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
         goldValue.textContent = world.gold;
         // Affordability is drawn into the open panel, so it has to follow the
         // purse rather than only the selection.
-        if (inspecting) drawTowerPanel();
+        if (radialState === 'open') drawRadial();
       }
       const waveText = `${Math.min(world.waveIndex + 1, world.waveCount)} / ${world.waveCount}`;
       if (waveText !== lastWaveText) {

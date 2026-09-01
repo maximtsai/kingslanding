@@ -135,9 +135,54 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   // Contact pools, one instanced draw for every structure on the island.
   const blobs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), soft.blobMat, CAP);
   blobs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+  // A flat, bright marker makes an upgradeable selection legible without adding
+  // another floating label. It is updated from the selected tower id by sync().
+  const selectionMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.82, 0.82),
+    new THREE.MeshBasicMaterial({ color: 0xffd21f, side: THREE.DoubleSide, depthWrite: false })
+  );
+  selectionMesh.rotation.x = -Math.PI / 2;
+  selectionMesh.renderOrder = 3;
+  selectionMesh.visible = false;
+  dynamicRoot.add(selectionMesh);
   blobs.frustumCulled = false;
   blobs.count = 0;
   dynamicRoot.add(blobs);
+
+  // ---- demolition (TDD 15) -------------------------------------------------
+  //
+  // Render-only, like every other presentation clock in this file: the
+  // simulation flips `alive` and moves on, and this decides what that looks
+  // like. Keyed by structure id, started by demolish() below.
+  const demolitions = new Map();
+  const D = config.demolition;
+  const DEMO_LIFE = Math.max(D.flash, D.sink);
+
+  // The blast is TWO instanced discs rather than one whose colour is animated,
+  // because this Three build cannot vary colour per instance -- the same
+  // instanceColor gap the embers work around. Two meshes, each showing only the
+  // instances currently in its half of the flash, gets a yellow-then-red
+  // explosion for two draws and no per-instance material.
+  const BLAST_CAP = 16;
+  const blastGeo = new THREE.CircleGeometry(1, 12);
+  const makeBlast = (colour, opacity) => {
+    const m = new THREE.InstancedMesh(blastGeo, new THREE.MeshBasicMaterial({
+      color: colour, transparent: true, opacity, depthWrite: false
+    }), BLAST_CAP);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.frustumCulled = false;
+    m.count = 0;
+    m.renderOrder = 6;
+    dynamicRoot.add(m);
+    return m;
+  };
+  // The red is the wider of the two and lives longer on screen, so it is the one
+  // that turns into a wall of colour if it is fully opaque. Slightly thinner.
+  const blastYellow = makeBlast(0xffd23f, 0.92);
+  const blastRed = makeBlast(0xff2a12, 0.80);
+  const blastPos = new THREE.Vector3();
+  const blastScale = new THREE.Vector3();
 
   // ---- damage as fire (TDD 15) ---------------------------------------------
   //
@@ -399,10 +444,12 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
     return false;
   }
 
-  function sync(world, camera, elapsed) {
+  function sync(world, camera, elapsed, selectedId = null) {
     for (const entry of kinds.values()) entry.count = 0;
+    selectionMesh.visible = false;
     let blobCount = 0;
     let flameCount = 0;
+    let yellowCount = 0, redCount = 0;
     liveStructures.clear();
 
     // matrixWorldInverse is only refreshed inside renderer.render, which has not
@@ -415,7 +462,19 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
     for (const s of world.structures.list) {
       liveStructures.add(s.id);
       const ruinedHouse = !s.alive && s.kind === 'house';
-      if (!s.alive && !ruinedHouse) {
+
+      // A repaired structure cancels anything it was in the middle of.
+      if (s.alive && demolitions.has(s.id)) demolitions.delete(s.id);
+
+      let demo = demolitions.get(s.id);
+      if (demo !== undefined) {
+        demo += world.paused ? 0 : elapsed;
+        if (demo >= DEMO_LIFE) { demolitions.delete(s.id); demo = undefined; }
+        else demolitions.set(s.id, demo);
+      }
+
+      // Dead and finished sinking: gone. Dead and still sinking: keep drawing.
+      if (!s.alive && !ruinedHouse && demo === undefined) {
         const existing = bars.get(s.id);
         if (existing) existing.bar.visible = false;
         continue;
@@ -455,12 +514,55 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
         startDustPuff(s, wx, board.topY(s.i, s.j), build.dustSpawned++);
       }
 
-      const shakeEnvelope = Math.sin(Math.PI * progress);
-      const shakePhase = build.age * C.shakeRate + s.id * 2.17;
-      const shakeX = Math.sin(shakePhase) * C.shakeOffset * shakeEnvelope;
-      const shakeZ = Math.cos(shakePhase * 1.31) * C.shakeOffset * shakeEnvelope;
-      const shakeTiltX = Math.sin(shakePhase * 0.83) * C.shakeTilt * shakeEnvelope;
-      const shakeTiltZ = Math.cos(shakePhase * 1.07) * C.shakeTilt * shakeEnvelope;
+      let shakeEnvelope = Math.sin(Math.PI * progress);
+      let shakePhase = build.age * C.shakeRate + s.id * 2.17;
+      let shakeAmp = C.shakeOffset, shakeTiltAmp = C.shakeTilt;
+      let sink = 0;
+
+      if (demo !== undefined) {
+        // GOING DOWN. Ease-out on the drop, so it lurches and then settles
+        // rather than easing gently into the floor -- "quickly sinks" is the
+        // brief, and a slow start reads as the building deciding to leave.
+        const st = Math.min(1, demo / D.sink);
+        sink = D.depth * (1 - (1 - st) * (1 - st));
+        // Judder hardest at the start and die out with the drop, which is the
+        // reverse of construction's rise-and-settle envelope.
+        shakeEnvelope = 1 - st;
+        shakePhase = demo * D.shakeRate + s.id * 2.17;
+        shakeAmp = D.shakeOffset;
+        shakeTiltAmp = D.shakeTilt;
+
+        // The blast: a billboarded disc, yellow then red, expanding. Only one of
+        // the two meshes carries it at a time, which is what makes the colour
+        // change without per-instance colour.
+        if (demo < D.flash) {
+          const cut = D.flash * 0.45;
+          let target = null, size = 0;
+          if (demo < cut) {
+            const k = demo / cut;
+            size = D.ring * (0.30 + 0.70 * k * (2 - k));
+            target = 'yellow';
+          } else {
+            const k = (demo - cut) / (D.flash - cut);
+            // Expands a little further, then collapses to nothing so it snuffs
+            // out instead of popping off mid-frame.
+            size = D.ring * (1 + 0.35 * k) * (k < 0.7 ? 1 : (1 - k) / 0.3);
+            target = 'red';
+          }
+          if (size > 0.001) {
+            blastPos.set(wx, board.topY(s.i, s.j) + 0.45, wz);
+            blastScale.set(size, size, size);
+            matrix.compose(blastPos, camera.quaternion, blastScale);
+            if (target === 'yellow') blastYellow.setMatrixAt(yellowCount++, matrix);
+            else blastRed.setMatrixAt(redCount++, matrix);
+          }
+        }
+      }
+
+      const shakeX = Math.sin(shakePhase) * shakeAmp * shakeEnvelope;
+      const shakeZ = Math.cos(shakePhase * 1.31) * shakeAmp * shakeEnvelope;
+      const shakeTiltX = Math.sin(shakePhase * 0.83) * shakeTiltAmp * shakeEnvelope;
+      const shakeTiltZ = Math.cos(shakePhase * 1.07) * shakeTiltAmp * shakeEnvelope;
 
       // TDD 7 keeps a rotation field on every tower even though only the
       // renderer reads it today; honouring it now is what makes directional
@@ -470,7 +572,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       const pop = repairPop.has(s.id) ? repairPop.get(s.id) : Infinity;
       const popT = pop === Infinity ? 0 : Math.min(1, pop / 0.48);
       const popHeight = pop === Infinity ? 0 : Math.sin(Math.PI * popT) * 0.16;
-      position.set(wx + shakeX, wy - riseDepth * (1 - rise) + popHeight, wz + shakeZ);
+      position.set(wx + shakeX, wy - riseDepth * (1 - rise) + popHeight - sink, wz + shakeZ);
       structureScale.set(0.94 + rise * 0.06, 1 + (pop === Infinity ? 0 : Math.sin(Math.PI * popT) * 0.12), 0.94 + rise * 0.06);
       matrix.compose(position, quaternion, structureScale);
 
@@ -505,6 +607,13 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
         entry.mesh.setMatrixAt(entry.count++, matrix);
       }
 
+      if (selectedId === s.id && s.alive && s.kind === 'tower' &&
+          progress >= 1 && s.type &&
+          (config.towers[s.type]?.upgradesTo || []).length) {
+        selectionMesh.position.set(wx, board.topY(s.i, s.j) + 0.025, wz);
+        selectionMesh.visible = true;
+      }
+
       if (blobCount < CAP) {
         const size = ruinedHouse ? 0.95 : s.kind === 'house' ? 1.25 : s.kind === 'castle' ? 2.5
                    : s.line === 'barricade' ? 0.95 : 1.1;
@@ -516,7 +625,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
 
       // Fire scales with how hurt the building is, and only a finished one
       // burns: a tower still going up has no health to have lost.
-      if (s.alive && progress >= 1 && s.hp < s.maxHp) {
+      if (s.alive && demo === undefined && progress >= 1 && s.hp < s.maxHp) {
         const damage = Math.min(1, 1 - s.hp / s.maxHp);
         flameCount += emitFlames(s, wx, wz, board.topY(s.i, s.j),
                                  damage, world.time, camera, flameCount);
@@ -548,6 +657,10 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
     if (blobCount) blobs.instanceMatrix.needsUpdate = true;
     flames.count = flameCount;
     if (flameCount) flames.instanceMatrix.needsUpdate = true;
+    blastYellow.count = yellowCount;
+    if (yellowCount) blastYellow.instanceMatrix.needsUpdate = true;
+    blastRed.count = redCount;
+    if (redCount) blastRed.instanceMatrix.needsUpdate = true;
     updateDust(world.paused ? 0 : elapsed);
 
     // A removed structure (sold, or wiped by a restart) leaves the instance
@@ -561,6 +674,13 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       if (liveStructures.has(id)) continue;
       if (view.bar.parent) view.bar.parent.remove(view.bar);
       bars.delete(id);
+    }
+    // A structure sold, or wiped by a level restart, can be carrying a
+    // demolition clock it will now never finish, because the loop above only
+    // advances entries it still sees in the list. Left alone these accumulate
+    // for the session -- small, but it also made `demolishing` report ghosts.
+    for (const id of demolitions.keys()) {
+      if (!liveStructures.has(id)) demolitions.delete(id);
     }
     for (const id of construction.keys()) {
       if (!liveStructures.has(id)) construction.delete(id);
@@ -594,8 +714,26 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
 
   return {
     sync,
+
+    // Driven from the structureDestroyed event by feedback.js.
+    //
+    // TOWERS ONLY. A house leaves a ruin standing -- that IS its destroyed
+    // state, and dropping it through the floor would delete the thing the ruin
+    // is there to say. The castle falling ends the level, so it is never seen
+    // going anywhere. Everything else is a tower, which is why this is one
+    // check rather than a list.
+    demolish(s) {
+      if (!s || s.kind !== 'tower') return;
+      demolitions.set(s.id, 0);
+      const groundY = board.topY(s.i, s.j);
+      for (let k = 0; k < D.dustPuffs; k++) {
+        startDustPuff(s, board.px(s.x), groundY, 200 + k);
+      }
+    },
+
     // For tests and the dev overlay: what is currently being seen through.
-    get occluding() { return new Set(occluders); }
+    get occluding() { return new Set(occluders); },
+    get demolishing() { return new Set(demolitions.keys()); }
   };
 }
 

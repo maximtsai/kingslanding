@@ -978,6 +978,10 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
       if (!view) { view = make(); views.set(boat.id, view); }
       const x = boat.px + (boat.x - boat.px) * alpha;
       const z = boat.pz + (boat.z - boat.pz) * alpha;
+      // The intro boat uses the descriptive id "intro", while wave boats use
+      // numeric ids. Keep render-only phase offsets numeric so the intro boat
+      // cannot poison its rotation or wake matrix with NaN.
+      const boatSeed = typeof boat.id === 'number' ? boat.id : 0;
       let wakeVisible = true;
 
       // Beaching: the bow rides up the shelf. Eased rather than snapped, and
@@ -986,7 +990,7 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
       const landed = boat.introPhase === 'grounded' || boat.introPhase === 'retreating';
       const target = boat.landed || landed ? 1 : 0;
       // Boats gently rock while underway, but settle completely once grounded.
-      const movingSway = boat.landed || landed ? 0 : Math.sin((world.time + boat.id * 0.17) * config.intro.boatSwayRate) * config.intro.boatSway * 0.35;
+      const movingSway = boat.landed || landed ? 0 : Math.sin((world.time + boatSeed * 0.17) * config.intro.boatSwayRate) * config.intro.boatSway * 0.35;
       const k = elapsed ? 1 - Math.exp(-elapsed / GROUND.seconds) : 1;
       view.beached += (target - view.beached) * k;
 
@@ -1001,7 +1005,11 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
         const retreatZ = -Math.cos(boat.facing) * config.intro.boatSlideBack * eased;
         view.group.position.set(board.px(x + retreatX), config.waves.hullY + view.beached * GROUND.lift - view.submerge * 0.48, board.px(z + retreatZ));
         view.group.rotation.order = 'YXZ';
-        view.group.rotation.set(-view.beached * GROUND_PITCH + Math.sin(view.sway * config.intro.boatSwayRate) * config.intro.boatSway * view.submerge, boat.facing, Math.sin(view.sway * config.intro.boatSwayRate * 0.73) * config.intro.boatSway * 0.7 * view.submerge);
+        view.group.rotation.set(
+          -view.beached * GROUND_PITCH + Math.sin(view.sway * config.intro.boatSwayRate) * config.intro.boatSway * view.submerge,
+          boat.facing,
+          Math.sin(view.sway * config.intro.boatSwayRate * 0.73) * config.intro.boatSway * 0.7 * view.submerge
+        );
         wakeVisible = view.submerge < 0.92;
         view.group.visible = view.submerge < 1;
         view.bubbleClock += elapsed;
@@ -1029,11 +1037,10 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
       // YXZ so the pitch happens about the hull's OWN lateral axis and the
       // heading is applied after it; with the default order the two interact
       // and the boat yaws as it tilts. Negative pitch lifts local +z, which is
-      // the direction of travel -- the bow.
-      view.group.rotation.order = 'YXZ';
-      view.group.rotation.set(-view.beached * GROUND_PITCH, boat.facing, 0);
+      // the direction of travel -- the bow. The branch above owns sway and
+      // retreat rocking; do not overwrite those rotations here.
       if (wakeCursor < WAKE_CAP) {
-        writeWake(wakeCursor, board.px(x), board.px(z), boat.facing, wakeVisible, world.time * config.intro.wakePulseRate + boat.id * 0.62);
+        writeWake(wakeCursor, board.px(x), board.px(z), boat.facing, wakeVisible, world.time * config.intro.wakePulseRate + boatSeed * 0.62);
       }
       wakeCursor++;
     }
@@ -1045,7 +1052,22 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
     }
   }
 
-  return { sync };
+  // Used by the unit view after this view has synced. Passengers inherit the
+  // exact render-only hull transform, including the eased beaching pitch and
+  // the intro retreat roll, instead of staying upright inside a moving boat.
+  const poseOffset = new THREE.Vector3();
+  function poseOf(unit, outPosition, outQuaternion) {
+    const boat = unit && unit.boat;
+    const view = boat && views.get(boat.id);
+    if (!boat || !view || !view.group.visible) return false;
+    poseOffset.set(0, unit.y - config.waves.hullY + A.ENEMY_LIFT, unit.boatOffset);
+    outPosition.copy(poseOffset).multiply(view.group.scale)
+      .applyQuaternion(view.group.quaternion).add(view.group.position);
+    outQuaternion.copy(view.group.quaternion);
+    return true;
+  }
+
+  return { sync, poseOf };
 }
 
 // --------------------------------------------------------------- projectiles
@@ -1358,6 +1380,7 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
     // to rest; it is never left frozen mid-draw.
     if (hero.attackTime < 0) {
       bow.rotation.y = Math.PI / 2;
+      rig.setBowDraw(0);
       return;
     }
 
@@ -1385,11 +1408,21 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
       draw = (1 - rt) * (1 - rt);
     }
 
+    rig.setBowDraw(draw);
+
     // The lower body keeps its gait while the torso and arms throw the bow
     // around. The poses are oversized on purpose -- at this scale the king is
-    // a few dozen pixels, and a subtle twist reads as a twitch.
+    // a few dozen pixels, and a subtle twist reads as a twitch. During the draw
+    // he loads his weight away from the target; the release pulse shifts it
+    // through the target and gives the shot a readable body contribution.
     rig.joints.torso.rotation.y += Math.max(-1.0, Math.min(1.0, aimDelta)) * 1.15 * draw;
     rig.joints.torso.rotation.x -= 0.15 * draw;
+    const releaseT = hero.attackTime < windup ? 0
+      : Math.min(1, (hero.attackTime - windup) / Math.max(0.001, recovery * 0.22));
+    rig.joints.torso.position.z = hero.attackTime < windup
+      ? -0.035 * draw
+      : 0.05 * Math.sin(Math.PI * releaseT);
+    rig.joints.bob.position.y -= 0.018 * Math.sin(Math.PI * releaseT);
     rig.joints.shoulders[1].rotation.x -= 1.7 * draw;
     rig.joints.shoulders[1].rotation.z -= 0.3 * draw;
     rig.joints.shoulders[0].rotation.x -= 1.15 * draw;
@@ -1473,8 +1506,11 @@ export function createHeroView(THREE, board, soft, kingRig, dynamicRoot) {
     // it up with.
     applyGait(rig.joints, gait, speed01, world.time * A.IDLE_RATE, A.stride);
     rig.joints.bob.rotation.z *= 0.5;
-    if (hero.jumpPhase) applyCliffPose(hero.jumpPhase, hero.jumpT);
-    else applyAttackPose(hero, facing);
+    rig.joints.torso.position.z = 0;
+    if (hero.jumpPhase) {
+      rig.setBowDraw(0);
+      applyCliffPose(hero.jumpPhase, hero.jumpT);
+    } else applyAttackPose(hero, facing);
   }
 
   return {

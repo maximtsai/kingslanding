@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hero TD -- Level Editor</title>
+<style>
+  :root {
+    --bg:       #14181d;
+    --panel:    #1c2229;
+    --panel-2:  #232b34;
+    --line:     #2f3a45;
+    --text:     #dbe3ea;
+    --dim:      #8b9aa8;
+    --accent:   #5aa9e6;
+    --ok:       #5fd08a;
+    --warn:     #e8b84b;
+    --bad:      #ea6a6a;
+    --water:    #2d5f86;
+    --t1:       #6f9e5a;
+    --t2:       #8fbf6a;
+    --t3:       #c3d98a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    overflow: hidden;
+  }
+
+  aside, main, section.inspector {
+    height: 100vh;
+    overflow-y: auto;
+    padding: 14px;
+  }
+  aside            { background: var(--panel); border-right: 1px solid var(--line); }
+  section.inspector{ background: var(--panel); border-left: 1px solid var(--line); }
+  main             { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+  h1 { font-size: 14px; margin: 0 0 4px; letter-spacing: .5px; }
+  h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--dim); margin: 18px 0 8px; font-weight: 600;
+  }
+  h2:first-of-type { margin-top: 10px; }
+  .sub { color: var(--dim); font-size: 11px; margin: 0 0 10px; }
+
+  button {
+    font: inherit; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 5px 9px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #06121c; font-weight: 700; }
+  button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+
+  input[type=text], input[type=number], textarea, select {
+    font: inherit; width: 100%; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 5px 7px;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  label { display: block; color: var(--dim); font-size: 11px; margin: 8px 0 3px; }
+
+  .row  { display: flex; gap: 6px; }
+  .row > * { flex: 1; }
+  .stack { display: flex; flex-direction: column; gap: 5px; }
+
+  /* ---- level list ---- */
+  .lvl {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; border-radius: 4px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .lvl:hover   { background: var(--panel-2); }
+  .lvl.sel     { background: var(--panel-2); border-color: var(--accent); }
+  .lvl .nm     { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lvl .badge  { font-size: 10px; color: var(--dim); }
+  .lvl .badge.bad { color: var(--bad); }
+  .lvl .ord    { display: flex; flex-direction: column; gap: 1px; }
+  .lvl .ord button { padding: 0 4px; font-size: 9px; line-height: 11px; }
+
+  /* ---- tools ---- */
+  .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .tools button { text-align: left; padding: 6px 8px; }
+  .tools button .k { color: var(--dim); font-size: 10px; }
+  .tools button.on .k { color: #06121c; }
+
+  .tiers { display: flex; gap: 5px; margin-top: 6px; }
+  .tiers button { flex: 1; text-align: center; padding: 8px 0; font-weight: 700; }
+  .tiers button[data-tier="0"] { background: var(--water); }
+  .tiers button[data-tier="1"] { background: var(--t1); color: #0d1a0a; }
+  .tiers button[data-tier="2"] { background: var(--t2); color: #0d1a0a; }
+  .tiers button[data-tier="3"] { background: var(--t3); color: #0d1a0a; }
+  .tiers button.on { outline: 2px solid var(--text); outline-offset: 1px; }
+
+  /* ---- grid ---- */
+  .board-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .grid { display: grid; gap: 2px; user-select: none; touch-action: none; }
+  .cell {
+    position: relative; width: 42px; height: 42px; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+    border: 1px solid rgba(0,0,0,.35);
+  }
+  .cell[data-h="0"] { background: var(--water); color: #86b6d8; }
+  .cell[data-h="1"] { background: var(--t1); color: #24391b; }
+  .cell[data-h="2"] { background: var(--t2); color: #24391b; }
+  .cell[data-h="3"] { background: var(--t3); color: #24391b; }
+  .cell:hover { outline: 2px solid var(--text); outline-offset: -2px; z-index: 3; }
+  .cell.ramp   { box-shadow: inset 0 0 0 2px #f0e6a0; }
+  .cell.anchor { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  .cell.err    { box-shadow: inset 0 0 0 2px var(--bad); }
+
+  /* ---- overlays ----
+     Four independent visual channels, so any combination stays readable:
+       background  reach heatmap (replaces the tier colour)
+       ::before    region tint -- orphan wins over castle, being the worse news
+       ::after     a bar on the bottom edge for landable beach
+       the label   distance from shore instead of the tier digit
+     Nothing here paints over the markers, which stay on top. */
+  .cell::before, .cell::after { content: ''; position: absolute; pointer-events: none; }
+  .cell::before { inset: 0; border-radius: 2px; }
+
+  .cell.o-castle::before {
+    background: rgba(240,200,90,.30);
+    box-shadow: inset 0 0 0 1px rgba(240,200,90,.85);
+  }
+  .cell.o-orphan::before {
+    background: repeating-linear-gradient(45deg,
+      rgba(234,106,106,.55) 0 4px, rgba(234,106,106,.15) 4px 8px);
+    box-shadow: inset 0 0 0 1px var(--bad);
+  }
+  /* Left EDGE, not a bottom bar: every corner already belongs to a marker, and
+     the markers sit at 3px in, so a 3px strip at x=0 is the one free channel. */
+  .cell.o-beach::after {
+    left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px;
+    background: #ffd98a; box-shadow: 0 0 4px rgba(255,217,138,.8);
+  }
+  .cell.o-reach { color: #f2f6fa; text-shadow: 0 1px 2px rgba(0,0,0,.85); }
+
+  .overlays { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .overlays button { text-align: left; padding: 6px 8px; }
+  .overlays button .k { color: var(--dim); font-size: 10px; }
+  .overlays button.on .k { color: #06121c; }
+
+  .mk {
+    position: absolute; font-size: 13px; line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,.7); pointer-events: none;
+  }
+  .mk.house { top: 2px; left: 3px; }
+  .mk.hero  { top: 2px; right: 3px; }
+  .mk.shore { bottom: 2px; left: 3px; }
+  .mk.res   { bottom: 2px; right: 3px; font-size: 11px; }
+  .mk.land  { top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 16px; }
+  .mk.arrow {
+    top: 50%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 17px; color: #2a2410;
+  }
+  .coords { color: var(--dim); font-size: 11px; }
+
+  /* ---- validation ---- */
+  .verdict { padding: 8px 10px; border-radius: 4px; font-weight: 700; }
+  .verdict.ok  { background: rgba(95,208,138,.12); color: var(--ok);  border: 1px solid rgba(95,208,138,.35); }
+  .verdict.bad { background: rgba(234,106,106,.12); color: var(--bad); border: 1px solid rgba(234,106,106,.35); }
+  ul.problems { margin: 8px 0 0; padding-left: 16px; color: var(--bad); font-size: 11px; }
+  ul.problems li { margin-bottom: 4px; }
+  .note { color: var(--warn); font-size: 11px; margin-top: 8px; }
+  .stats { color: var(--dim); font-size: 11px; margin-top: 8px; }
+  .stats b { color: var(--text); font-weight: 600; }
+
+  /* ---- save bar ---- */
+  .savebar { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .savebar button { flex: 1; padding: 9px; font-weight: 700; }
+  #save { background: var(--ok); border-color: var(--ok); color: #04160b; }
+  #save:disabled { background: var(--panel-2); border-color: var(--line); color: var(--dim); }
+  #status { font-size: 11px; min-height: 16px; margin-top: 6px; }
+  #status.ok  { color: var(--ok); }
+  #status.bad { color: var(--bad); }
+  .dirty { color: var(--warn); }
+
+  .legend { color: var(--dim); font-size: 11px; line-height: 1.7; }
+  .legend b { color: var(--text); }
+
+  /* Shown only when the server that delivered this page has no save endpoint --
+     the project is servable by any static file server, and from in here they
+     look identical until a POST comes back 404. */
+  #offline {
+    position: fixed; inset: 0 0 auto 0; z-index: 50;
+    background: var(--bad); color: #1b0505;
+    padding: 9px 16px; text-align: center; font-weight: 700;
+    box-shadow: 0 2px 12px rgba(0,0,0,.5);
+    cursor: pointer;            /* the whole bar is the retry button */
+  }
+  #offline:hover { filter: brightness(1.08); }
+  #offline code {
+    background: rgba(0,0,0,.22); padding: 1px 5px; border-radius: 3px; font-weight: 700;
+  }
+  /* The banner is fixed, so it would sit on top of the first thing in each
+     column. Pad the scroll containers instead of the body -- they are already
+     100vh with their own overflow, so padding here moves content without
+     breaking the grid.
+     The height is MEASURED into --banner-h rather than hardcoded, because the
+     message wraps to two lines on a narrow window and one on a wide one. */
+  body.has-banner aside,
+  body.has-banner main,
+  body.has-banner section.inspector { padding-top: calc(var(--banner-h, 60px) + 10px); }
+</style>
+</head>
+<body>
+
+<div id="offline" hidden></div>
+
+<aside>
+  <h1>Level Editor</h1>
+  <p class="sub">Writes <code>src/sim/level-data.js</code></p>
+
+  <h2>Levels</h2>
+  <div id="levelList" class="stack"></div>
+  <div class="row" style="margin-top:8px">
+    <button id="addLevel">+ New</button>
+    <button id="dupLevel">Duplicate</button>
+  </div>
+  <button id="delLevel" class="danger" style="width:100%;margin-top:5px">Delete level</button>
+
+  <h2>Tool</h2>
+  <div class="tools" id="tools"></div>
+  <div class="tiers" id="tiers"></div>
+
+  <h2>Overlays</h2>
+  <div class="overlays" id="overlays"></div>
+  <div id="overlayInfo" class="legend" style="margin-top:8px"></div>
+
+  <h2>Legend</h2>
+  <div class="legend">
+    <b>&#127968;</b> house &nbsp; <b>&#128081;</b> hero spawn<br>
+    <b>&#9875;</b> shore fallback &nbsp; <b>&#9646;</b> reserved<br>
+    <b>&#9650;</b> ramp (points uphill)<br>
+    <b>&#9679;</b> intro landing tile
+  </div>
+</aside>
+
+<main>
+  <div class="board-wrap">
+    <div id="grid" class="grid"></div>
+    <div class="coords" id="hoverInfo">&nbsp;</div>
+  </div>
+</main>
+
+<section class="inspector">
+  <h2>Validation</h2>
+  <div id="verdict" class="verdict ok">&mdash;</div>
+  <ul id="problems" class="problems"></ul>
+  <div id="waveNote" class="note" hidden></div>
+  <div id="stats" class="stats"></div>
+
+  <h2>Level</h2>
+  <label>id (the key, and how config.js finds its waves)</label>
+  <input type="text" id="fId">
+  <label>name</label>
+  <input type="text" id="fName">
+  <label>board size (N x N)</label>
+  <input type="number" id="fSize" min="4" max="24" step="1">
+
+  <h2>Arrival cutscene</h2>
+  <label style="display:flex;align-items:center;gap:6px;margin-top:0">
+    <input type="checkbox" id="fIntro" style="width:auto"> has intro
+  </label>
+  <div id="introFields" hidden>
+    <label>from (off-board tile coords, may be fractional)</label>
+    <div class="row">
+      <input type="number" id="fFromX" step="0.1">
+      <input type="number" id="fFromY" step="0.1">
+    </div>
+    <label>land &mdash; set with the "intro land" tool</label>
+    <input type="text" id="fLand" readonly>
+  </div>
+
+  <h2>Notes</h2>
+  <p class="sub" style="margin:0 0 6px">Saved with the level, ignored by the game.</p>
+  <textarea id="fNotes" placeholder="Anything worth remembering about this level."></textarea>
+
+  <div class="savebar">
+    <button id="save" disabled>Save to disk</button>
+    <button id="revert" class="danger">Revert</button>
+  </div>
+  <div id="status"></div>
+  <p class="sub" style="margin-top:10px">
+    Ctrl+S save &middot; Ctrl+Z undo &middot; 0&ndash;3 pick tier
+  </p>
+</section>
+
+<script type="module">
+import { createBoard }   from '../src/sim/board.js';
+import { landingTable }  from '../src/sim/landing.js';
+import { config }        from '../src/config.js';
+import { LEVEL_DATA, LEVEL_ORDER } from '../src/sim/level-data.js';
+
+// ---------------------------------------------------------------------------
+// The editor never re-implements a game rule. It paints tiles, and then hands
+// the result to the game's own createBoard() + validate() on every change. If
+// those two accept it, the game will load it; if they do not, Save stays off.
+// That is the whole design -- a second copy of the rules living in here would
+// be the copy that goes stale.
+// ---------------------------------------------------------------------------
+
+const TOOLS = [
+  ['height', 'Height',     'paint tiers'],
+  ['ramp',   'Ramp',       'low then high'],
+  ['house',  'House',      'toggle'],
+  ['shore',  'Shore',      'toggle'],
+  ['res',    'Reserved',   'toggle'],
+  ['hero',   'Hero spawn', 'single'],
+  ['land',   'Intro land', 'single']
+];
+
+// Overlays answer the questions the grid cannot. Each one is derived from the
+// board the game itself builds -- flatSquares, distanceField and landingTable
+// are the same calls validate() makes, so what you see here and what the game
+// enforces cannot drift apart.
+const OVERLAYS = [
+  ['castle', 'Castle sites', 'legal 2x2'],
+  ['beach',  'Beaches',      'boats land'],
+  ['reach',  'Reach',        'steps from shore'],
+  ['orphan', 'Orphans',      'unreachable']
+];
+
+const $ = id => document.getElementById(id);
+const clone = o => JSON.parse(JSON.stringify(o));
+const same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+
+let levels  = clone(LEVEL_DATA);
+let order   = [...LEVEL_ORDER];
+let current = order[0];
+let tool    = 'height';
+let tier    = 1;
+let anchor  = null;          // first click of a ramp pair
+let painting = false;
+let dirty   = false;
+let undoStack = [];
+let overlays = { castle: false, beach: false, reach: false, orphan: false };
+let saveAvailable = true;   // set by probeSaveEndpoint() at load
+let ovl = null;              // overlay data for the current level, per render
+
+const lv = () => levels[current];
+
+// ---- history ----------------------------------------------------------------
+
+function snapshot() {
+  undoStack.push({ levels: clone(levels), order: [...order], current });
+  if (undoStack.length > 100) undoStack.shift();
+}
+function undo() {
+  const prev = undoStack.pop();
+  if (!prev) return;
+  ({ levels, order, current } = { levels: prev.levels, order: prev.order, current: prev.current });
+  if (!levels[current]) current = order[0];
+  dirty = true;
+  renderAll();
+}
+function edit(fn) {           // snapshot, mutate, re-render
+  snapshot();
+  fn();
+  dirty = true;
+  renderAll();
+}
+
+// ---- validation -------------------------------------------------------------
+
+// createBoard() throws on the FIRST bad ramp, before validate() ever runs, so a
+// ramp error arrives alone while everything else arrives as a collected list.
+// Both paths are funnelled into one array here.
+function check(level) {
+  try {
+    const board = createBoard(level, config.board);
+    board.validate(config.waves.spawnRadius);
+    return { ok: true, problems: [], board };
+  } catch (err) {
+    const msg = String(err.message || err);
+    const problems = msg.includes('failed validation:')
+      ? msg.split('\n').slice(1).map(s => s.trim()).filter(Boolean)
+      : [msg];
+    let board = null;
+    try { board = createBoard(level, config.board); } catch { /* ramp error */ }
+    return { ok: false, problems, board };
+  }
+}
+
+const allValid = () => order.every(id => levels[id] && check(levels[id]).ok);
+
+// ---- overlay data -----------------------------------------------------------
+
+// Everything here comes off the board the game builds. In particular the
+// distance field is seeded from shoreFallback and NOT from the beaches, because
+// that is exactly what validate() does when it hunts for orphaned land -- if the
+// two disagreed, the red tiles on the grid would not be the tiles in the problem
+// list, and the overlay would be lying about the rule it exists to explain.
+function overlayData(board, level) {
+  const empty = { castle: new Set(), beach: new Set(), orphan: new Set(),
+                  field: null, maxDist: 0, sites: 0 };
+  if (!board) return empty;
+  const n = board.N;
+  const out = { ...empty, castle: new Set(), beach: new Set(), orphan: new Set() };
+
+  const field = board.distanceField(level.shoreFallback);
+  out.field = field;
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      if (!board.isLand(i, j)) continue;
+      const d = field.get(i, j);
+      if (!isFinite(d)) out.orphan.add(i + ':' + j);
+      else if (d > out.maxDist) out.maxDist = d;
+    }
+  }
+
+  // Every tile any legal 2x2 covers, not just its corner -- the question an
+  // author has is "can the castle go over there", which is about regions.
+  const sites = board.flatSquares(2);
+  out.sites = sites.length;
+  for (const [i, j] of sites) {
+    for (let dj = 0; dj < 2; dj++) for (let di = 0; di < 2; di++) {
+      out.castle.add((i + di) + ':' + (j + dj));
+    }
+  }
+
+  try {
+    out.beach = landingTable({ N: board.N, at: board.at, isLand: board.isLand },
+                             config.waves.spawnRadius).beaches;
+  } catch { /* a board this broken has nothing to say about beaches */ }
+
+  return out;
+}
+
+// Distance from the shore, as a colour. Warm where a landing party arrives in a
+// couple of steps, cool where it has a long walk -- so the gradient reads as
+// "how much time do I have here".
+function reachColor(d, max) {
+  const hue = max > 0 ? (d / max) * 210 : 0;      // 0 red -> 210 blue
+  return `hsl(${hue.toFixed(0)}, 62%, 42%)`;
+}
+
+// ---- geometry helpers -------------------------------------------------------
+
+const size = level => level.heights.length;
+const inBoard = (level, [i, j]) => i >= 0 && j >= 0 && i < size(level) && j < size(level);
+
+function resize(level, n) {
+  const old = level.heights, prev = old.length;
+  level.heights = Array.from({ length: n }, (_, j) =>
+    Array.from({ length: n }, (_, i) => (j < prev && i < prev ? old[j][i] : 0)));
+  const keep = t => inBoard(level, t);
+  level.houses        = level.houses.filter(keep);
+  level.shoreFallback = level.shoreFallback.filter(keep);
+  if (level.reserved) level.reserved = level.reserved.filter(keep);
+  level.ramps = level.ramps.filter(([a, b]) => keep(a) && keep(b));
+  if (!keep(level.heroSpawn)) level.heroSpawn = [0, 0];
+  if (level.intro && !keep(level.intro.land)) level.intro.land = [0, 0];
+}
+
+function toggleTile(list, tile) {
+  const at = list.findIndex(t => same(t, tile));
+  if (at >= 0) list.splice(at, 1); else list.push([...tile]);
+}
+
+function rampAt(level, tile) {
+  return level.ramps.findIndex(([a, b]) => same(a, tile) || same(b, tile));
+}
+
+// ---- painting ---------------------------------------------------------------
+
+function apply(i, j) {
+  const level = lv(), tile = [i, j];
+  switch (tool) {
+    case 'height':
+      if (level.heights[j][i] === tier) return false;
+      level.heights[j][i] = tier;
+      return true;
+    case 'house':  toggleTile(level.houses, tile); return true;
+    case 'shore':  toggleTile(level.shoreFallback, tile); return true;
+    case 'res':
+      if (!level.reserved) level.reserved = [];
+      toggleTile(level.reserved, tile);
+      if (!level.reserved.length) delete level.reserved;
+      return true;
+    case 'hero':   level.heroSpawn = tile; return true;
+    case 'land':
+      if (!level.intro) return false;
+      level.intro.land = tile;
+      return true;
+    case 'ramp': {
+      const existing = rampAt(level, tile);
+      if (anchor === null && existing >= 0) {         // click a ramp to remove it
+        level.ramps.splice(existing, 1);
+        return true;
+      }
+      if (anchor === null) { anchor = tile; renderGrid(); return false; }
+      if (same(anchor, tile)) { anchor = null; renderGrid(); return false; }
+      level.ramps.push([anchor, tile]);               // low end first, then high
+      anchor = null;
+      return true;
+    }
+  }
+  return false;
+}
+
+function paint(i, j) {
+  // Height is the only drag-paintable tool; the rest are one-shot per click so
+  // a dragged finger cannot silently toggle six houses.
+  if (tool !== 'height' && painting) return;
+  const before = clone(lv());
+  if (!apply(i, j)) return;
+  const after = lv();
+  levels[current] = before;                            // rewind so snapshot is pre-edit
+  snapshot();
+  levels[current] = after;
+  dirty = true;
+  renderAll();
+}
+
+// ---- rendering --------------------------------------------------------------
+
+function renderTools() {
+  $('tools').innerHTML = TOOLS.map(([id, label, hint]) =>
+    `<button data-tool="${id}" class="${tool === id ? 'on' : ''}">${label}<br>` +
+    `<span class="k">${hint}</span></button>`).join('');
+  $('tiers').innerHTML = [0, 1, 2, 3].map(t =>
+    `<button data-tier="${t}" class="${tier === t && tool === 'height' ? 'on' : ''}">${t}</button>`
+  ).join('');
+}
+
+function renderLevelList() {
+  $('levelList').innerHTML = order.map((id, idx) => {
+    const level = levels[id];
+    const bad = !check(level).ok;
+    return `<div class="lvl ${id === current ? 'sel' : ''}" data-id="${id}">
+      <div class="ord">
+        <button data-move="up"   data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>&#9650;</button>
+        <button data-move="down" data-idx="${idx}" ${idx === order.length - 1 ? 'disabled' : ''}>&#9660;</button>
+      </div>
+      <span class="nm">${level.name}</span>
+      <span class="badge ${bad ? 'bad' : ''}">${bad ? '!' : size(level) + '&sup2;'}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderGrid() {
+  const level = lv(), n = size(level), grid = $('grid');
+  grid.style.gridTemplateColumns = `repeat(${n}, 42px)`;
+
+  const ramps = new Map();          // "i:j" -> arrow char for the low end
+  const rampSet = new Set();
+  for (const [[li, lj], [hi, hj]] of level.ramps) {
+    rampSet.add(li + ':' + lj); rampSet.add(hi + ':' + hj);
+    const dx = hi - li, dy = hj - lj;
+    ramps.set(li + ':' + lj, dx === 1 ? '▶' : dx === -1 ? '◀'
+                           : dy === 1 ? '▼' : dy === -1 ? '▲' : '◆');
+  }
+  const has = (list, i, j) => (list || []).some(t => same(t, [i, j]));
+
+  let html = '';
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const k = i + ':' + j;
+      const cls = ['cell'];
+      if (rampSet.has(k)) cls.push('ramp');
+      if (anchor && same(anchor, [i, j])) cls.push('anchor');
+
+      // ---- overlays ----
+      // One region tint at a time: an unreachable tile that also happens to be a
+      // legal castle site is worth knowing about, and orphan is the half of that
+      // the author has to act on. (flatSquares is terrain-only and never asks
+      // about reachability, so the pair really can co-occur.)
+      let label = level.heights[j][i], style = '';
+      if (ovl) {
+        const orphan = overlays.orphan && ovl.orphan.has(k);
+        if (orphan) cls.push('o-orphan');
+        else if (overlays.castle && ovl.castle.has(k)) cls.push('o-castle');
+        if (overlays.beach && ovl.beach.has(k)) cls.push('o-beach');
+        if (overlays.reach && ovl.field && level.heights[j][i] > 0) {
+          const d = ovl.field.get(i, j);
+          if (isFinite(d)) {
+            cls.push('o-reach');
+            style = ` style="background:${reachColor(d, ovl.maxDist)}"`;
+            label = d;
+          }
+        }
+      }
+
+      let mk = '';
+      if (ramps.has(k)) mk += `<span class="mk arrow">${ramps.get(k)}</span>`;
+      if (has(level.houses, i, j)) mk += '<span class="mk house">&#127968;</span>';
+      if (same(level.heroSpawn, [i, j])) mk += '<span class="mk hero">&#128081;</span>';
+      if (has(level.shoreFallback, i, j)) mk += '<span class="mk shore">&#9875;</span>';
+      if (has(level.reserved, i, j)) mk += '<span class="mk res">&#9646;</span>';
+      if (level.intro && same(level.intro.land, [i, j])) mk += '<span class="mk land">&#9679;</span>';
+      html += `<div class="${cls.join(' ')}" data-i="${i}" data-j="${j}" ` +
+              `data-h="${level.heights[j][i]}"${style}>${label}${mk}</div>`;
+    }
+  }
+  grid.innerHTML = html;
+}
+
+function renderOverlayButtons() {
+  $('overlays').innerHTML = OVERLAYS.map(([id, label, hint]) =>
+    `<button data-ovl="${id}" class="${overlays[id] ? 'on' : ''}">${label}<br>` +
+    `<span class="k">${hint}</span></button>`).join('');
+
+  const bits = [];
+  if (ovl) {
+    if (overlays.castle) bits.push(`<b>${ovl.sites}</b> legal 2&times;2 site(s), shown as gold`);
+    if (overlays.beach)  bits.push(`<b>${ovl.beach.size}</b> landable tile(s), gold left edge`);
+    if (overlays.reach)  bits.push(`steps from shoreFallback, red near &rarr; blue far ` +
+                                   `(deepest <b>${ovl.maxDist}</b>)`);
+    if (overlays.orphan) bits.push(ovl.orphan.size
+      ? `<b>${ovl.orphan.size}</b> tile(s) no landing party can walk to`
+      : 'no unreachable land');
+  }
+  $('overlayInfo').innerHTML = bits.join('<br>');
+}
+
+function renderValidation(pre) {
+  const level = lv();
+  const { ok, problems, board } = pre || check(level);
+  $('verdict').className = 'verdict ' + (ok ? 'ok' : 'bad');
+  $('verdict').textContent = ok ? 'valid — the game will load this'
+                                : problems.length + ' problem' + (problems.length === 1 ? '' : 's');
+  $('problems').innerHTML = problems.map(p => `<li>${p}</li>`).join('');
+
+  const waves = config.waves.levels[level.id];
+  $('waveNote').hidden = !!waves;
+  $('waveNote').textContent = waves ? ''
+    : `No wave table for "${level.id}" in config.js (config.waves.levels). `
+    + 'The level loads but has nothing to spawn — add one before playing it.';
+
+  if (board) {
+    // Read off the overlay data rather than recomputing: landingTable casts 360
+    // rays, and doing that twice per keystroke during a drag-paint is a cost for
+    // nothing.
+    $('stats').innerHTML =
+      `<b>${board.N}&times;${board.N}</b> board &middot; max tier <b>${board.MAX_H}</b><br>` +
+      `<b>${ovl ? ovl.sites : '?'}</b> legal 2&times;2 castle sites &middot; ` +
+      `<b>${ovl ? ovl.beach.size : '?'}</b> landable beach tiles<br>` +
+      `<b>${level.ramps.length}</b> ramps &middot; <b>${level.houses.length}</b> houses &middot; ` +
+      `<b>${waves ? waves.length : 0}</b> waves`;
+  } else {
+    $('stats').textContent = 'board could not be built — fix the ramp above';
+  }
+}
+
+function renderInspector() {
+  const level = lv();
+  $('fId').value    = level.id;
+  $('fName').value  = level.name;
+  $('fSize').value  = size(level);
+  $('fNotes').value = level.notes || '';
+  $('fIntro').checked = !!level.intro;
+  $('introFields').hidden = !level.intro;
+  if (level.intro) {
+    $('fFromX').value = level.intro.from[0];
+    $('fFromY').value = level.intro.from[1];
+    $('fLand').value  = `[${level.intro.land.join(', ')}]`;
+  }
+}
+
+function renderSave() {
+  const ok = allValid();
+  $('save').disabled = !ok || !dirty || !saveAvailable;
+  $('save').textContent = !saveAvailable ? 'Save unavailable' : (dirty ? 'Save to disk *' : 'Saved');
+  $('revert').disabled = !dirty;
+  if (!ok && dirty) setStatus('some level is invalid — fix it before saving', 'bad');
+}
+
+function renderAll() {
+  // Build the board ONCE per render and hand it to everyone who needs it.
+  // Overlays, stats and the problem list are all views of the same object, so
+  // they cannot show three different opinions of the same level.
+  const res = check(lv());
+  ovl = overlayData(res.board, lv());
+  renderTools(); renderOverlayButtons(); renderLevelList(); renderGrid();
+  renderValidation(res); renderInspector(); renderSave();
+}
+
+function setStatus(msg, kind) {
+  $('status').textContent = msg;
+  $('status').className = kind || '';
+}
+
+// ---- events -----------------------------------------------------------------
+
+$('tools').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tool]');
+  if (!b) return;
+  tool = b.dataset.tool; anchor = null; renderAll();
+});
+
+$('tiers').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tier]');
+  if (!b) return;
+  tier = +b.dataset.tier; tool = 'height'; anchor = null; renderAll();
+});
+
+$('overlays').addEventListener('click', e => {
+  const b = e.target.closest('button[data-ovl]');
+  if (!b) return;
+  overlays[b.dataset.ovl] = !overlays[b.dataset.ovl];
+  renderAll();
+});
+
+$('levelList').addEventListener('click', e => {
+  const mv = e.target.closest('button[data-move]');
+  if (mv) {
+    const i = +mv.dataset.idx, to = mv.dataset.move === 'up' ? i - 1 : i + 1;
+    edit(() => { const [x] = order.splice(i, 1); order.splice(to, 0, x); });
+    return;
+  }
+  const row = e.target.closest('.lvl');
+  if (row) { current = row.dataset.id; anchor = null; renderAll(); }
+});
+
+$('grid').addEventListener('pointerdown', e => {
+  const c = e.target.closest('.cell');
+  if (!c) return;
+  painting = false;
+  paint(+c.dataset.i, +c.dataset.j);
+  painting = true;
+  $('grid').setPointerCapture(e.pointerId);
+});
+$('grid').addEventListener('pointermove', e => {
+  if (!painting || tool !== 'height') return;
+  const c = document.elementFromPoint(e.clientX, e.clientY);
+  if (c && c.classList.contains('cell')) {
+    const i = +c.dataset.i, j = +c.dataset.j;
+    if (lv().heights[j][i] !== tier) { lv().heights[j][i] = tier; dirty = true; renderAll(); }
+  }
+});
+addEventListener('pointerup', () => { painting = false; });
+
+$('grid').addEventListener('pointerover', e => {
+  const c = e.target.closest('.cell');
+  $('hoverInfo').textContent = c
+    ? `[${c.dataset.i}, ${c.dataset.j}]  tier ${c.dataset.h}` +
+      (tool === 'ramp' && anchor ? `   — now click the HIGH end` : '')
+    : ' ';
+});
+
+// ---- inspector fields ----
+
+$('fName').addEventListener('input', e => { lv().name = e.target.value; dirty = true; renderLevelList(); renderSave(); });
+$('fNotes').addEventListener('input', e => {
+  const v = e.target.value;
+  if (v.trim()) lv().notes = v; else delete lv().notes;
+  dirty = true; renderSave();
+});
+
+$('fId').addEventListener('change', e => {
+  const next = e.target.value.trim();
+  if (next === current) return;
+  if (!/^[A-Za-z_$][\w$]*$/.test(next)) { setStatus('id must be a valid JS identifier', 'bad'); renderInspector(); return; }
+  if (levels[next]) { setStatus(`a level called "${next}" already exists`, 'bad'); renderInspector(); return; }
+  edit(() => {
+    const old = current;
+    levels[next] = levels[old]; levels[next].id = next;
+    delete levels[old];
+    order[order.indexOf(old)] = next;
+    current = next;
+  });
+  setStatus(`renamed — remember to rename its wave table in config.js too`, 'bad');
+});
+
+$('fSize').addEventListener('change', e => {
+  const n = Math.max(4, Math.min(24, +e.target.value || size(lv())));
+  edit(() => resize(lv(), n));
+});
+
+$('fIntro').addEventListener('change', e => {
+  edit(() => {
+    if (e.target.checked) lv().intro = { from: [0, 0], land: [...lv().heroSpawn] };
+    else delete lv().intro;
+  });
+});
+for (const [id, idx] of [['fFromX', 0], ['fFromY', 1]]) {
+  $(id).addEventListener('input', e => {
+    if (!lv().intro) return;
+    lv().intro.from[idx] = parseFloat(e.target.value) || 0;
+    dirty = true; renderSave();
+  });
+}
+
+// ---- level management ----
+
+function freshId(base) {
+  let n = 1, id = base;
+  while (levels[id]) id = base + (++n);
+  return id;
+}
+
+$('addLevel').addEventListener('click', () => edit(() => {
+  const id = freshId('level');
+  levels[id] = {
+    id, name: 'New Level',
+    heights: Array.from({ length: 8 }, () => Array(8).fill(1)),
+    ramps: [], houses: [], shoreFallback: [], heroSpawn: [3, 3]
+  };
+  order.push(id);
+  current = id;
+}));
+
+$('dupLevel').addEventListener('click', () => edit(() => {
+  const id = freshId(current);
+  levels[id] = clone(lv());
+  levels[id].id = id;
+  levels[id].name = lv().name + ' copy';
+  order.splice(order.indexOf(current) + 1, 0, id);
+  current = id;
+}));
+
+$('delLevel').addEventListener('click', () => {
+  if (order.length === 1) { setStatus('cannot delete the last level', 'bad'); return; }
+  if (!confirm(`Delete "${lv().name}"? Its wave table in config.js is left alone.`)) return;
+  edit(() => {
+    delete levels[current];
+    order.splice(order.indexOf(current), 1);
+    current = order[0];
+  });
+});
+
+// ---- save / revert ----
+
+// The save URL is deliberately relative: it posts back to whichever server
+// delivered this page, which is the only origin devserver.py will accept. The
+// cost of that is this failure mode -- open the editor from a plain static file
+// server (runServer8124.exe, python -m http.server, a Live Server extension) and
+// everything works right up until Save, which 404s. So ask once, at load.
+const WRONG_SERVER =
+  `has no save endpoint — it is a plain file server. Serve the project with ` +
+  `<code>python devserver.py</code>, then <u>click here to retry</u>.`;
+
+// The probe runs at load, so starting the dev server AFTER opening the editor
+// used to leave the banner up for good -- which is the likeliest order to do it
+// in. Retry on click, and whenever the window is focused again, since coming
+// back from the terminal where you just started the server is exactly the
+// moment the answer changes.
+function showBanner(show) {
+  document.body.classList.toggle('has-banner', show);
+  $('offline').hidden = !show;
+  if (!show) return;
+  $('offline').innerHTML = `Saving is unavailable — <b>${location.host}</b> ${WRONG_SERVER}`;
+  // Measure, do not guess: offsetHeight forces the layout we need anyway.
+  // Skip a zero-width viewport (a collapsed pane, a background tab): the text
+  // wraps one word per line there and would latch a padding ten times too big.
+  // The resize listener below re-measures the moment it has a real width.
+  if ($('offline').offsetWidth > 0) {
+    document.body.style.setProperty('--banner-h', $('offline').offsetHeight + 'px');
+  }
+}
+
+// The message rewraps as the window changes, so the padding has to follow it.
+addEventListener('resize', () => { if (!saveAvailable) showBanner(true); });
+
+async function probeSaveEndpoint() {
+  try {
+    const res = await fetch('/api/save-levels', { headers: { Accept: 'application/json' } });
+    const type = res.headers.get('content-type') || '';
+    saveAvailable = res.ok && type.includes('application/json');
+  } catch {
+    saveAvailable = false;
+  }
+  showBanner(!saveAvailable);
+  setStatus(saveAvailable ? 'saving is available on this server'
+                          : 'read-only: this server cannot save',
+            saveAvailable ? 'ok' : 'bad');
+  renderSave();
+}
+
+async function save() {
+  if (!saveAvailable) { setStatus('this server has no save endpoint — see the banner', 'bad'); return; }
+  if (!allValid()) { setStatus('fix the invalid level first', 'bad'); return; }
+  setStatus('saving…');
+
+  let res, body, raw;
+  try {
+    res = await fetch('/api/save-levels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ levels, order })
+    });
+    raw = await res.text();
+  } catch (err) {
+    setStatus('could not reach the dev server: ' + err.message, 'bad');
+    return;
+  }
+
+  // A static server answers a 404 in HTML, so json() would throw a parse error
+  // and bury the actual cause under "Unexpected token <".
+  try { body = JSON.parse(raw); } catch { body = null; }
+  if (!body) {
+    saveAvailable = false;
+    showBanner(true);
+    setStatus(`server replied ${res.status} in ${res.headers.get('content-type') || 'an unknown format'}, not JSON`, 'bad');
+    renderSave();
+    return;
+  }
+
+  if (!res.ok) {
+    setStatus((body.error || `save failed (${res.status})`) +
+      (body.problems ? ': ' + body.problems.join('; ') : ''), 'bad');
+    return;
+  }
+
+  dirty = false;
+  setStatus(`saved ${body.levels.length} level(s), ${body.bytes} bytes — reload the game to see it`, 'ok');
+  renderSave();
+}
+
+$('save').addEventListener('click', save);
+$('revert').addEventListener('click', () => {
+  if (!confirm('Throw away every unsaved change?')) return;
+  levels = clone(LEVEL_DATA); order = [...LEVEL_ORDER];
+  if (!levels[current]) current = order[0];
+  dirty = false; undoStack = [];
+  setStatus('reverted to the file on disk');
+  renderAll();
+});
+
+addEventListener('keydown', e => {
+  // e.target is not always an Element -- it is `document` when nothing holds
+  // focus, and Document has no .matches().
+  if (e.target instanceof Element && e.target.closest('input, textarea')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+  if (e.key >= '0' && e.key <= '3') { tier = +e.key; tool = 'height'; anchor = null; renderAll(); }
+  if (e.key === 'Escape' && anchor) { anchor = null; renderGrid(); }
+});
+
+addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+$('offline').addEventListener('click', () => {
+  setStatus('rechecking the server…');
+  probeSaveEndpoint();
+});
+addEventListener('focus', () => { if (!saveAvailable) probeSaveEndpoint(); });
+
+renderAll();
+setStatus(`loaded ${order.length} level(s) from level-data.js`);
+probeSaveEndpoint();
+</script>
+</body>
+</html>

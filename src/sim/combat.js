@@ -199,11 +199,38 @@ export function createCombat(world) {
     };
   }
 
+  // Nudge the aim point off the solved intercept, once, at release.
+  //
+  // leadTarget() returns a perfect firing solution, and a tower firing nothing
+  // but perfect solutions reads as a turret rather than as archers. This is the
+  // only randomness in a projectile's whole life: after it, the arrow is on a
+  // fixed line to a fixed point and nothing -- not the target moving, not the
+  // target dying -- ever adjusts it again.
+  //
+  // See config.projectiles.spread for the geometry and the numbers.
+  function scatterAim(aim, from) {
+    const dx = aim.x - from.x, dz = aim.z - from.z;
+    const flight = Math.hypot(dx, dz);
+    if (!(flight > 1e-6) || !(P.spread > 0)) return;
+
+    // Triangular, not uniform: bounded, so no shot is ever wild, but clustered
+    // around zero, so the common case is still close to where it was aimed.
+    const jitter = () => Math.random() + Math.random() - 1;
+
+    const ux = dx / flight, uz = dz / flight;          // along the shot
+    const lateral = jitter() * P.spread * flight;      // perpendicular: -uz, ux
+    const along = jitter() * P.spread * (P.spreadRangeFactor || 0) * flight;
+
+    aim.x += -uz * lateral + ux * along;
+    aim.z += ux * lateral + uz * along;
+  }
+
   // The trajectory is fixed at release. A target killed by another shot turns
   // this one into a physical miss instead of making it disappear.
   function fire(from, target, damage, speed, source, trajectory, splash, kind) {
     const startY = from.y;
     const aim = leadTarget(from, target, speed);
+    scatterAim(aim, from);
     const dx = aim.x - from.x, dz = aim.z - from.z;
     const span = Math.hypot(dx, dz) || 1;
     projectiles.push({

@@ -120,7 +120,30 @@ export const config = {
     overtravelDistance: 0.14,
     missGravity: 4.8,
     submergedLifetime: 0.2,
-    rippleLifetime: 0.8
+    rippleLifetime: 0.8,
+
+    // ---- release scatter ----
+    // An arrow leaves the bow on a fixed line and never corrects, so the only
+    // moment inaccuracy can enter is release. This is that moment's dial.
+    //
+    // ANGULAR, not absolute: the offset is a fraction of the flight distance.
+    // Long shots scatter wide, point-blank ones barely at all, which is both
+    // how bows behave and what keeps los.js honest -- the deviation is ZERO at
+    // the muzzle and reaches its full value only at the target, so an arrow
+    // never starts off-line and cannot clip the cliff its own tower stands
+    // behind. That property is why the scatter is applied to the aim POINT and
+    // not to the launch angle.
+    //
+    // Scale, against config.unit.hitRadius of 0.40: at a 6-tile shot, `spread`
+    // 0.05 allows up to 0.30 tiles of lateral drift, and the distribution is
+    // triangular, so most arrows land near the middle of that and the outliers
+    // are what miss. Raise it and archers start looking incompetent; drop it to
+    // 0 and you get the old behaviour, every shot a solved intercept.
+    spread: 0.05,
+    // Short-and-long drift, as a fraction of the lateral figure. Kept lower
+    // because an arrow landing wide reads as a miss, while one landing short
+    // mostly reads as the same shot arriving a moment early.
+    spreadRangeFactor: 0.5
   },
 
   // ---- construction presentation ----
@@ -359,7 +382,6 @@ export const config = {
       aggroRange: 1.45,        // TDD 10: always slightly greater than attackRange
       attentionRange: 1.95,    // ...and slightly greater again, to stop a retaliation
       pushRadius: 0.08,        //    tighter unit-to-unit clustering
-      hitRadius: 0.34,          // slightly smaller combat footprint
       hitRadius: 0.40,
       gold: 4                  // P1 stand-in for the coin drops of TDD 12
     },
@@ -399,6 +421,41 @@ export const config = {
       speed: 0.6,
       damage: 22,
       attackInterval: 1.5,
+
+      // ---- the swing ----
+      // It had none. Without an attackWindup the dispatch in enemies.js takes
+      // the instant-damage branch, so the heaviest thing on the island hit for
+      // 22 with its walk cycle still playing and never even fired the
+      // `swingStart` sound. That is exactly backwards: the brute is the unit
+      // whose whole read is weight.
+      //
+      // Nearly twice the grunt's windup, and it costs no DPS -- the cooldown
+      // starts at the windup, not at the landing, so only the phase moves.
+      // It does hand the player something real though: 0.38s in which a brute
+      // that dies loses the blow, where before its damage could not be
+      // prevented once the cooldown expired. Bursting one down mid-swing is
+      // now a thing that works.
+      //
+      // 0.38 + 0.55 = 0.93 against a 1.5 interval, so it still comes to rest
+      // for half a second between blows rather than windmilling.
+      attackWindup: 0.38,
+      attackRecovery: 0.55,
+
+      // Heavier than the default in every axis: hauled further back, carried
+      // further through, and the whole body goes in behind it. `raiseFrac` is
+      // up too, so more of the longer windup is spent lifting -- a club is
+      // heavy to raise, and the hang at the top is the telegraph the player
+      // reads to decide whether to step in.
+      swing: {
+        raise: -1.25,
+        contact: 1.05,
+        follow: 1.75,
+        twist: 0.42,
+        raiseFrac: 0.52,
+        lunge: 0.13,
+        dip: 0.038
+      },
+
       // Standoff is 0.5 + 0.26 + 0.04 = 0.80, so reach has to clear that.
       attackRange: 1.00,
       aggroRange: 1.55,
@@ -1071,6 +1128,34 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
       SWAY: 0.085,
       YAW: 0.055
     },
+
+    // ---- the melee swing ----
+    // The DEFAULT profile. An enemy spec may carry a partial `swing` block that
+    // overrides any of these, the same way a gait takes a profile rather than
+    // reading globals -- so a club and a sword can differ without either one
+    // drifting into the other by accident.
+    //
+    // SIGNS MATTER, and they were once backwards. The weapon hangs entirely
+    // ABOVE the shoulder pivot, so a POSITIVE rotation about x carries it
+    // FORWARD and a negative one draws it back. `raise` must therefore be
+    // negative -- blade back over the shoulder -- and `contact` positive.
+    // See units.js: with these inverted the unit shoves the butt of its sword
+    // at the wall.
+    swing: {
+      raise: -1.05,          // rad, weapon drawn back over the shoulder
+      contact: 1.00,         // rad, where it is when the blow LANDS
+      follow: 1.55,          // rad, where the follow-through carries it
+      twist: 0.30,           // rad, torso counter-twist during the windup
+      twistAfter: -0.22,     // rad, torso twist from contact onward
+      raiseFrac: 0.45,       // of the windup spent drawing back
+      followFrac: 0.28,      // of the recovery spent completing the arc
+      lunge: 0.07,           // tiles, forward shove from the moment of contact
+      dip: 0.022,             // world units the body drops through the blow
+      impact: 0.08,           // rad torso compression on the contact beat
+      impactDip: 0.018,       // world units of extra body drop on contact
+      impactDuration: 0.12    // seconds for the contact accent
+    },
+
     TURN_RATE: 7.0,          // rad/s, damped approach so units bank into turns
     IDLE_RATE: 1.35,         // rad/s breathing clock, independent of the gait
     IDLE_SCALE: 0.15,        // TDD: idle is the same rig at ~15%

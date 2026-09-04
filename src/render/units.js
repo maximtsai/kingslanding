@@ -115,7 +115,7 @@ export function applyGait(joints, gait, speed01, idleT, style) {
   joints.torso.rotation.x = idle * 0.12 * rest + G.LEAN * speed01;
 }
 
-export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
+export function createUnitView(THREE, board, soft, rigs, dynamicRoot, boatView = null) {
   // Living enemies remain capped at MAX_ENEMIES, but recently killed bodies can
   // overlap later spawns during their four-second presentation window.
   const UNIT_CAP = config.MAX_ENEMIES * 3;
@@ -132,6 +132,7 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
   // InstancedMesh for each mesh the template contains.
   const kits = new Map();
   const scratch = new THREE.Matrix4();
+  const boatQuaternion = new THREE.Quaternion();
 
   function kitFor(type) {
     const existing = kits.get(type);
@@ -226,13 +227,22 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
   // With the old values (raise +1.25, follow -0.85) the blade went forward on
   // the windup and backward on the blow, which read exactly as it was: the unit
   // shoving the butt of its sword at the wall.
-  const SWING_RAISE = -1.05;    // rad, blade drawn back over the shoulder
-  const SWING_CONTACT = 1.00;   // rad, where the blade is when the blow LANDS
-  const SWING_FOLLOW = 1.55;    // rad, where the follow-through carries it to
-  const SWING_TWIST = 0.30;     // rad, torso counter-twist during the windup
-  const SWING_RAISE_FRAC = 0.45; // of the windup spent drawing back
-  const SWING_FOLLOW_FRAC = 0.28; // of the recovery spent completing the arc
-  const SWING_LUNGE = 0.07;     // tiles, forward shove at the moment of contact
+  //
+  // The numbers themselves are a PROFILE now, config.anim.swing, which any
+  // enemy spec may override in part. They used to be constants here, which
+  // meant every melee attacker swung identically and a brute given a longer
+  // windup would only have played the grunt's arc in slow motion. Resolved once
+  // per spec and cached: this runs for every swinging unit every frame, and the
+  // merge is not worth doing forty times a frame to get the same object back.
+  const swingProfiles = new WeakMap();
+  function swingProfile(spec) {
+    let profile = swingProfiles.get(spec);
+    if (!profile) {
+      profile = { ...A.swing, ...(spec.swing || {}) };
+      swingProfiles.set(spec, profile);
+    }
+    return profile;
+  }
 
   // THE BLADE HAS TO BE THROUGH THE TARGET AT `attackWindup`, not starting for
   // it. The simulation lands damage at that instant, so if the pose only begins
@@ -244,8 +254,9 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
   // sweep runs through the remaining 38%, arriving forward exactly on contact.
   // The recovery then carries the arc past the target and settles.
   function applySwingPose(joints, age, spec) {
+    const S = swingProfile(spec);
     const W = spec.attackWindup, R = spec.attackRecovery;
-    const drawTo = W * SWING_RAISE_FRAC;
+    const drawTo = W * S.raiseFrac;
     let shoulder, twist, lunge = 0, drop = 0;
 
     if (age < drawTo) {
@@ -254,8 +265,8 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
       // rather than a twitch.
       const p = Math.min(1, age / drawTo);
       const raise = 1 - (1 - p) * (1 - p) * (1 - p);
-      shoulder = SWING_RAISE * raise;
-      twist = SWING_TWIST * raise;
+      shoulder = S.raise * raise;
+      twist = S.twist * raise;
     } else if (age < W) {
       // THE BLOW TRAVELLING. Mildly accelerating -- fastest at contact, but not
       // so back-loaded that the sword crosses from behind the unit to in front
@@ -264,32 +275,42 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
       // save it.
       const k = (age - drawTo) / (W - drawTo);
       const e = k * (0.4 + 0.6 * k);
-      shoulder = SWING_RAISE + (SWING_CONTACT - SWING_RAISE) * e;
-      twist = SWING_TWIST + (-0.22 - SWING_TWIST) * e;
+      shoulder = S.raise + (S.contact - S.raise) * e;
+      twist = S.twist + (S.twistAfter - S.twist) * e;
       drop = e;
     } else {
       const q = Math.min(1, (age - W) / R);
-      if (q < SWING_FOLLOW_FRAC) {
+      if (q < S.followFrac) {
         // FOLLOW THROUGH past the target rather than stopping dead on it.
-        const k = q / SWING_FOLLOW_FRAC;
-        shoulder = SWING_CONTACT + (SWING_FOLLOW - SWING_CONTACT) * k * (2 - k);
-        twist = -0.22;
+        const k = q / S.followFrac;
+        shoulder = S.contact + (S.follow - S.contact) * k * (2 - k);
+        twist = S.twistAfter;
         drop = 1;
       } else {
         // RECOVERY. Settles back to rest quadratically, slowest at the end.
-        const r = (q - SWING_FOLLOW_FRAC) / (1 - SWING_FOLLOW_FRAC);
-        shoulder = SWING_FOLLOW * (1 - r * r);
-        twist = -0.22 * (1 - r * r);
+        const r = (q - S.followFrac) / (1 - S.followFrac);
+        shoulder = S.follow * (1 - r * r);
+        twist = S.twistAfter * (1 - r * r);
         drop = 1 - r;
       }
-      lunge = SWING_LUNGE * Math.max(0, 1 - q / 0.5);
+      lunge = S.lunge * Math.max(0, 1 - q / 0.5);
     }
 
     // Written on top of whatever applyGait just put there, and only on the
     // weapon arm: the empty shoulder keeps walking.
     joints.shoulders[1].rotation.x = shoulder;
     joints.torso.rotation.y += twist;
-    joints.bob.position.y -= 0.022 * drop;
+    joints.bob.position.y -= S.dip * drop;
+
+    // A compact impact pulse makes the damage frame readable even when the
+    // weapon is hidden by a wall or another unit. It compresses the torso and
+    // then releases instead of adding a second hit event or changing timing.
+    if (S.impactDuration) {
+      const impactT = Math.max(0, Math.min(1, (age - W) / S.impactDuration));
+      const impact = Math.sin(Math.PI * impactT);
+      joints.torso.rotation.x += S.impact * impact;
+      joints.bob.position.y -= S.impactDip * impact;
+    }
     return lunge;
   }
 
@@ -337,21 +358,33 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot) {
       // of the blow. One arch over the reaction's life -- sin() rather than a
       // linear decay, so it returns to rest smoothly instead of snapping.
       const root = kit.template.root;
+      const aboard = u.state === 'boat' && !u.disembark && boatView &&
+        boatView.poseOf(u, position, boatQuaternion);
       const reaction = u.alive ? reactions.get(u.id) : null;
       if (reaction) {
         const punch = Math.sin(Math.PI * Math.min(1, reaction.age / H.seconds));
         root.scale.setScalar(rigs.scaleOf(u.type) * (1 + H.swell * punch));
-        root.position.set(
-          wx + reaction.dx * H.recoil * punch * board.TILE,
-          y + A.ENEMY_LIFT,
-          wz + reaction.dz * H.recoil * punch * board.TILE
-        );
+        if (!aboard) {
+          position.set(
+            wx + reaction.dx * H.recoil * punch * board.TILE,
+            y + A.ENEMY_LIFT,
+            wz + reaction.dz * H.recoil * punch * board.TILE
+          );
+        } else {
+          position.x += reaction.dx * H.recoil * punch * board.TILE;
+          position.z += reaction.dz * H.recoil * punch * board.TILE;
+        }
       } else {
         root.scale.setScalar(rigs.scaleOf(u.type));
-        root.position.set(wx, y + A.ENEMY_LIFT, wz);
+        if (!aboard) position.set(wx, y + A.ENEMY_LIFT, wz);
       }
-      root.rotation.order = 'YXZ';
-      root.rotation.set(0, facing, 0);
+      root.position.copy(position);
+      if (aboard) {
+        root.quaternion.copy(boatQuaternion);
+      } else {
+        root.rotation.order = 'YXZ';
+        root.rotation.set(0, facing, 0);
+      }
       for (const shoulder of kit.template.joints.shoulders) {
         shoulder.rotation.y = 0;
         shoulder.rotation.z = 0;

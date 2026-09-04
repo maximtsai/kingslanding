@@ -11,3 +11,10 @@
 
 # Uploaded files
 uploads/
+
+# Save-endpoint backup (git is the real undo)
+src/sim/level-data.js.bak
+src/sim/level-data.js.tmp
+
+# Python bytecode
+__pycache__/

@@ -183,6 +183,7 @@ export function createKingRig(THREE, kit, P) {
   // on +X, then swing +X to +Z -- the way he faces. See rigs.js for the long
   // version; this is the same fix on his own geometry.
   const KING_BOW_ARC = Math.PI * 1.1;
+  const KING_BOW_CHORD_Z = 0.16 * Math.cos(KING_BOW_ARC / 2);
   const kingBowGeo = new THREE.TorusGeometry(0.16, 0.018, 3, 8, KING_BOW_ARC);
   kingBowGeo.rotateZ(-KING_BOW_ARC / 2);
   kingBowGeo.rotateY(-Math.PI / 2);
@@ -190,6 +191,25 @@ export function createKingRig(THREE, kit, P) {
   bow.position.set(-0.01, -0.19, 0.05); bow.rotation.z = 0.35;
   addOutlined(bow, 16, shoulders[1]);
 
+  // A three-point string is enough to show tension at this scale. The centre
+  // point pulls toward the bow hand during the draw, then returns on release;
+  // unlike a scaled box it keeps both limbs anchored to the bow tips.
+  const stringGeometry = new THREE.BufferGeometry();
+  const stringPositions = new Float32Array([
+    0, -0.15, KING_BOW_CHORD_Z,
+    0, 0, KING_BOW_CHORD_Z,
+    0, 0.15, KING_BOW_CHORD_Z
+  ]);
+  stringGeometry.setAttribute('position', new THREE.BufferAttribute(stringPositions, 3));
+  const bowString = new THREE.Line(stringGeometry, new THREE.LineBasicMaterial({ color: 0xd8c7a3 }));
+  bowString.position.set(0, 0, 0);
+  bow.add(bowString);
+  const setBowDraw = draw => {
+    stringPositions[5] = KING_BOW_CHORD_Z - 0.085 * Math.max(0, Math.min(1, draw));
+    stringGeometry.attributes.position.needsUpdate = true;
+  };
+  setBowDraw(0);
+
   root.scale.setScalar(0.54 * 1.15);
-  return { root, joints: { bob, torso, hips, shoulders }, bow };
+  return { root, joints: { bob, torso, hips, shoulders }, bow, setBowDraw };
 }

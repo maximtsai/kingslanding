@@ -101,10 +101,12 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   const world = createWorld(board);
 
   // ---- views ----
-  const unitView = createUnitView(THREE, board, scene.soft, scene.rigs, scene.dynamicRoot);
+  // The unit view needs the boat view's render transform so passengers inherit
+  // the same pitch and roll as their hull rather than being posed upright beside it.
+  const boatView = createBoatView(THREE, board, scene.kit, scene.rigs, scene.dynamicRoot);
+  const unitView = createUnitView(THREE, board, scene.soft, scene.rigs, scene.dynamicRoot, boatView);
   const structureView = createStructureView(THREE, board, scene.prefabs, scene.soft,
                                            scene.dynamicRoot, scene.scenery);
-  const boatView = createBoatView(THREE, board, scene.kit, scene.rigs, scene.dynamicRoot);
   const projectileView = createProjectileView(THREE, board, scene.dynamicRoot);
   const heroView = createHeroView(THREE, board, scene.soft, scene.kingRig, scene.dynamicRoot);
   const coinView = createCoinView(THREE, board, scene.dynamicRoot);
@@ -259,9 +261,11 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
         stairCameraY === null ? heroY : stairCameraY - config.board.SINK
       );
 
+      // Boat transforms are presentation state consumed by aboard units, so the
+      // hull sync must run before the unit sync in each frame.
+      boatView.sync(world, blend, world.paused ? 0 : elapsed);
       unitView.sync(world, blend, elapsed);
       structureView.sync(world, view.camera, elapsed, hud.inspectingId);
-      boatView.sync(world, blend, world.paused ? 0 : elapsed);
       projectileView.sync(world, blend);
       coinView.sync(world, blend);
       heroView.sync(world, blend, elapsed);

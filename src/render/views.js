@@ -989,8 +989,10 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
       // simulation has no opinion about how a hull sits.
       const landed = boat.introPhase === 'grounded' || boat.introPhase === 'retreating';
       const target = boat.landed || landed ? 1 : 0;
-      // Boats gently rock while underway, but settle completely once grounded.
-      const movingSway = boat.landed || landed ? 0 : Math.sin((world.time + boatSeed * 0.17) * config.intro.boatSwayRate) * config.intro.boatSway * 0.35;
+      // Boats gently roll side to side while underway, but settle completely
+      // once grounded. The sway rides the ROLL axis -- the hull's long axis --
+      // so a boat tips gunwale to gunwale instead of pitching bow over stern.
+      const movingRoll = boat.landed || landed ? 0 : Math.sin((world.time + boatSeed * 0.17) * config.intro.boatSwayRate) * config.intro.boatSway * 0.55;
       const k = elapsed ? 1 - Math.exp(-elapsed / GROUND.seconds) : 1;
       view.beached += (target - view.beached) * k;
 
@@ -1005,11 +1007,8 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
         const retreatZ = -Math.cos(boat.facing) * config.intro.boatSlideBack * eased;
         view.group.position.set(board.px(x + retreatX), config.waves.hullY + view.beached * GROUND.lift - view.submerge * 0.48, board.px(z + retreatZ));
         view.group.rotation.order = 'YXZ';
-        view.group.rotation.set(
-          -view.beached * GROUND_PITCH + Math.sin(view.sway * config.intro.boatSwayRate) * config.intro.boatSway * view.submerge,
-          boat.facing,
-          Math.sin(view.sway * config.intro.boatSwayRate * 0.73) * config.intro.boatSway * 0.7 * view.submerge
-        );
+        const rock = Math.sin(view.sway * config.intro.boatSwayRate) * config.intro.boatSway * 0.55 * view.submerge;
+        view.group.rotation.set(-view.beached * GROUND_PITCH, boat.facing, rock);
         wakeVisible = view.submerge < 0.92;
         view.group.visible = view.submerge < 1;
         view.bubbleClock += elapsed;
@@ -1032,7 +1031,7 @@ export function createBoatView(THREE, board, kit, rigs, dynamicRoot) {
         wakeVisible = true;
         view.group.position.set(board.px(x), config.waves.hullY + view.beached * GROUND.lift, board.px(z));
         view.group.rotation.order = 'YXZ';
-        view.group.rotation.set(-view.beached * GROUND_PITCH + movingSway, boat.facing, movingSway * 0.65);
+        view.group.rotation.set(-view.beached * GROUND_PITCH, boat.facing, movingRoll);
       }
       // YXZ so the pitch happens about the hull's OWN lateral axis and the
       // heading is applied after it; with the default order the two interact

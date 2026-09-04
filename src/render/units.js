@@ -175,35 +175,78 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot, boatView =
 
   let drawn = 0;
 
-  function applyDeathPose(root, joints, age, side) {
-    const fallT = Math.min(1, age / A.DEATH_FALL);
-    const fall = 1 - Math.pow(1 - fallT, 3);
+  // ---- the death launch ----
+  // A kill launches the body up and back along the line of the blow -- a brief
+  // airborne knockback instead of a topple in place. The figure strikes the
+  // curled, slightly fetal pose in the instant of death and then holds it
+  // rigid for the whole flight: torso folded onto tucked knees, weapon drawn
+  // in. The arc has CONSTANT horizontal speed and the body never rotates --
+  // no forward pitch on the launch, no backward tumble on the fall -- so it
+  // lands curled in the same pose and stays there until the sink drains it
+  // (config.anim.DEATH_SINK_*).
+  //
+  // All of this is presentation: the corpse's sim record does not move, so
+  // nothing on the sim side needs to know the body is airborne.
+  //
+  // `kx, kz` is the unit direction of the blow (away from whatever killed it,
+  // or the figure's own facing when the damage had no source) and `jitter` is
+  // a per-unit +-1 that varies the arc height slightly so a volley does not
+  // pop in mechanical unison.
+  function applyDeathPose(root, joints, age, kx, kz, jitter) {
+    const p = Math.min(1, age / A.DEATH_FLY);
+    // The curl is struck in the moment of death and then held: the ease-in
+    // only spans DEATH_FLY_SNAP of the flight, so the last live frame does
+    // not pop straight into the folded pose.
+    const pose = Math.min(1, p / A.DEATH_FLY_SNAP);
+    const poseE = pose * pose * (3 - 2 * pose);
+    // Height profile of the flight: on the ground at launch and at landing,
+    // at the apex halfway through.
+    const rise = Math.sin(Math.PI * p);
+    // Knockback along the blow at CONSTANT speed -- linear in flight time,
+    // with no easing and no reversal, so the body never lurches then coasts.
+    const back = p;
+    const h = A.DEATH_FLY_HEIGHT * (1 + 0.07 * jitter);
+
+    root.position.y += h * rise;
+    root.position.x += kx * A.DEATH_FLY_BACK * back * board.TILE;
+    root.position.z += kz * A.DEATH_FLY_BACK * back * board.TILE;
+    // The body never rotates: it keeps the facing it died with the whole way
+    // and lands curled rather than flipped onto its back.
+    root.rotation.x = 0;
+    root.rotation.z = 0;
+
+    // The fetal curl, written absolutely over whatever mid-stride pose the
+    // last live frame left behind. Once the snap-in completes, nothing about
+    // this pose animates while the body flies -- it is one rigid shape.
+    joints.bob.position.y = 0;
+    joints.bob.rotation.z = 0;
+    joints.torso.rotation.x = A.DEATH_FLY_HUNCH * poseE;
+    joints.torso.rotation.y = 0;
+    // Thighs drawn up toward the chest and shins folded under them -- the
+    // fetal tuck -- so the whole body compacts into a ball instead of leaving
+    // the legs dangling below the folded torso.
+    joints.hips[0].rotation.x = joints.hips[1].rotation.x =
+      -A.DEATH_FLY_HIP * poseE;
+    joints.hips[0].rotation.z = 0;
+    joints.hips[1].rotation.z = 0;
+    if (joints.knees) {
+      joints.knees[0].rotation.x = joints.knees[1].rotation.x =
+        joints.kneeBase + A.DEATH_FLY_TUCK * poseE;
+    }
+    // The weapon is drawn in over the folded torso rather than flung back by
+    // the blow; both shoulders fold together so nothing sticks out of the
+    // curl.
+    joints.shoulders[0].rotation.x = A.DEATH_FLY_ARM * poseE;
+    joints.shoulders[1].rotation.x = A.DEATH_FLY_ARM * poseE;
+
+    // Once on the ground, the corpse is pinned in place until the sink
+    // swallows it (world.js keeps the record for DEATH_SINK_DELAY +
+    // DEATH_SINK_DURATION).
     const sinkT = Math.max(0, Math.min(1,
       (age - A.DEATH_SINK_DELAY) / A.DEATH_SINK_DURATION
     ));
     const sink = sinkT * sinkT * (3 - 2 * sinkT);
-
-    // Fall backward around the feet, briefly canting to alternating sides so a
-    // group does not collapse in mechanical unison.
-    root.rotation.x = -Math.PI / 2 * fall;
-    root.rotation.z = Math.sin(fallT * Math.PI) * 0.1 * side;
     root.position.y -= A.DEATH_SINK_DEPTH * sink;
-
-    joints.bob.position.y = 0;
-    joints.bob.rotation.z = 0;
-    joints.torso.rotation.x = 0;
-    joints.torso.rotation.y = 0;
-    joints.hips[0].rotation.x = joints.hips[1].rotation.x = 0;
-    joints.hips[0].rotation.z = -0.12 * fall;
-    joints.hips[1].rotation.z = 0.12 * fall;
-    // Back to the rig's resting bend, or the corpse keeps whichever mid-stride
-    // flexion the last live frame happened to leave in the joint.
-    if (joints.knees) {
-      joints.knees[0].rotation.x = joints.knees[1].rotation.x = joints.kneeBase;
-    }
-    joints.shoulders[0].rotation.x = joints.shoulders[1].rotation.x = 0;
-    joints.shoulders[0].rotation.z = -1.25 * fall;
-    joints.shoulders[1].rotation.z = 1.25 * fall;
   }
 
   // ---- the swing (TDD 10) --------------------------------------------------
@@ -420,7 +463,12 @@ export function createUnitView(THREE, board, soft, rigs, dynamicRoot, boatView =
       }
       if (!u.alive) {
         const age = Math.max(0, u.deathAge - (1 - alpha) / config.sim.HZ);
-        applyDeathPose(root, kit.template.joints, age, u.id % 2 ? 1 : -1);
+        // Launched away from whatever killed it. When the damage had no source
+        // (splash), knock the body back the way it was facing -- the direction
+        // it came from.
+        const kx = typeof u.knockDx === 'number' ? u.knockDx : -Math.sin(facing);
+        const kz = typeof u.knockDz === 'number' ? u.knockDz : -Math.cos(facing);
+        applyDeathPose(root, kit.template.joints, age, kx, kz, u.id % 2 ? 1 : -1);
       }
       root.updateMatrixWorld(true);
 

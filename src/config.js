@@ -626,7 +626,9 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     boatSlideSeconds: 1.375,
     boatSubmergeSeconds: 6,
     boatSway: 0.13,
-    boatSwayRate: 8.5,
+    // Radians per second of the roll phase: 3.4 is about one full side-to-side
+    // cycle every 1.9s -- a deliberate rock, not the tremble 8.5 produced.
+    boatSwayRate: 3.4,
     bubbleInterval: 0.18,
     bubbleLifetime: 0.9,
     // Boat wakes: one instanced wave ring per hull, each breathing at its own
@@ -1159,7 +1161,21 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     TURN_RATE: 7.0,          // rad/s, damped approach so units bank into turns
     IDLE_RATE: 1.35,         // rad/s breathing clock, independent of the gait
     IDLE_SCALE: 0.15,        // TDD: idle is the same rig at ~15%
-    DEATH_FALL: 0.35,
+
+    // ---- death: the launch, then the sink ----
+    // A kill launches the body up and back along the line of the blow: the
+    // figure snaps into a curled, slightly fetal pose on impact and rides a
+    // constant-speed backward arc, never rotating or tumbling. DEATH_SINK_*
+    // then pin the corpse in place and let it drain into the ground; world.js
+    // sums the delay and duration for how long the corpse record is kept.
+    DEATH_FLY: 0.6,           // s the corpse is airborne after the blow
+    DEATH_FLY_HEIGHT: 0.45,   // world units at the apex, ~one grunt body height
+    DEATH_FLY_BACK: 0.3,      // tiles the corpse is knocked back from the blow
+    DEATH_FLY_SNAP: 0.12,     // fraction of the flight spent snapping into pose
+    DEATH_FLY_HUNCH: 1.15,    // rad the torso folds forward over the knees
+    DEATH_FLY_HIP: 0.5,       // rad the thighs tuck up toward the chest
+    DEATH_FLY_TUCK: 0.6,      // rad of extra knee bend folded into the curl
+    DEATH_FLY_ARM: 0.3,       // rad the weapon is drawn in over the chest
     DEATH_SINK_DELAY: 2,
     DEATH_SINK_DURATION: 2,
     DEATH_SINK_DEPTH: 0.7

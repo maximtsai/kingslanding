@@ -122,6 +122,17 @@ export function createWorld(board) {
     target.hp = 0;
     target.deathAge = 0;
     target.moving = false;
+    // Which way the corpse is launched: directly away from whatever killed it,
+    // the same line the hit reaction recoils along. Sourceless damage (splash)
+    // leaves this unset and the renderer falls back to knocking the body back
+    // the way it was facing.
+    if (source && typeof source.x === 'number') {
+      let dx = target.x - source.x, dz = target.z - source.z;
+      const span = Math.hypot(dx, dz);
+      if (span > 1e-4) { dx /= span; dz /= span; } else { dx = 0; dz = 0; }
+      target.knockDx = dx;
+      target.knockDz = dz;
+    }
     // TDD 12: kill gold drops as a coin the king walks over, rather than landing
     // in the purse. What that buys is a reason to move during a lull -- and it
     // is never a requirement, because the wave-clear sweep collects the rest.

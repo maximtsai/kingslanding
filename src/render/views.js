@@ -155,7 +155,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   }
 
   // Contact pools, one instanced draw for every structure on the island.
-  const blobs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), soft.blobMat, CAP);
+  const blobs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), soft.buildingBlobMat, CAP);
   blobs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
   // A flat, bright marker makes an upgradeable selection legible without adding

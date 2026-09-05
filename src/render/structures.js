@@ -15,20 +15,22 @@
 import {
   STAIR_TREAD_STARTS, STAIR_HEIGHTS, STAIR_END, stairSurfaceY
 } from '../stairs.js';
+import { createMasonry } from './masonry.js';
 
 export function createStructurePrefabs(ctx) {
   const { THREE, P, board, kit, soft, props, rand, used, K, SINK } = ctx;
   const { at, px, topY, TILE, STAIRS } = board;
   const { mat, bevelBox, baseAO, strut } = kit;
+  const masonry = createMasonry(THREE);
 
   function house(x, y, z, scale) {
     const g = new THREE.Group();
     const wall = bevelBox(0.62 * scale, 0.48 * scale, 0.46 * scale, 0.03, P.wall);
     baseAO(wall, 0.72);
+    masonry.courses(wall, 0.62 * scale, 0.48 * scale, 0.46 * scale, P.wall, 0.15 * scale);
     g.add(wall);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.49 * scale, 0.33 * scale, 4), mat(P.roof));
-    roof.position.y = 0.61 * scale;
-    roof.rotation.y = Math.PI / 4;
+    const roof = masonry.roof(0.76 * scale, 0.64 * scale, 0.33 * scale, P.roof);
+    roof.position.y = 0.46 * scale;
     g.add(roof);
     const door = bevelBox(0.12 * scale, 0.015 * scale, 0.22 * scale, 0, 0x6b5942);
     door.position.set(0, 0.02, 0.246 * scale);
@@ -110,7 +112,12 @@ export function createStructurePrefabs(ctx) {
     const hall = bevelBox(1.30, 1.30, 0.66, 0.05, stone);
     hall.position.y = 0.28;
     baseAO(hall, 0.74);
+    masonry.courses(hall, 1.30, 1.30, 0.66, stone);
     g.add(hall);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      const slab = bevelBox(0.29, 0.29, 0.012, 0, (i + j) % 3 ? stone : P.wall);
+      slab.position.set((i - 1.5) * 0.30, 0.942, (j - 1.5) * 0.30); g.add(slab);
+    }
 
     // Crenellated parapet: blocks sit squarely along the hall's four edges,
     // rather than tracing a circular ring around it.
@@ -134,10 +141,15 @@ export function createStructurePrefabs(ctx) {
       const turret = bevelBox(0.40, 0.40, 1.24, 0.04, stone);
       turret.position.set(sx * 0.66, 0, sz * 0.66);
       baseAO(turret, 0.70);
+      masonry.courses(turret, 0.40, 0.40, 1.24, stone, 0.18);
       g.add(turret);
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(0.33, 0.34, 4), mat(castleBlue));
-      roof.position.set(sx * 0.66, 1.42, sz * 0.66);
-      roof.rotation.y = Math.PI / 4;
+      for (const face of [0, 1]) {
+        const slit = bevelBox(face ? 0.012 : 0.032, face ? 0.032 : 0.012, 0.12, 0, 0x565b50);
+        slit.position.set(sx * (0.66 + (face ? 0.205 : 0)), 0.88, sz * (0.66 + (face ? 0 : 0.205)));
+        g.add(slit);
+      }
+      const roof = masonry.roof(0.51, 0.51, 0.36, castleBlue);
+      roof.position.set(sx * 0.66, 1.24, sz * 0.66);
       g.add(roof);
       const finial = new THREE.Mesh(new THREE.OctahedronGeometry(0.05, 0), mat(castleGold));
       finial.position.set(sx * 0.66, 1.62, sz * 0.66);
@@ -167,7 +179,42 @@ export function createStructurePrefabs(ctx) {
     const gate = bevelBox(0.30, 0.04, 0.34, 0, 0x6b5942);
     gate.position.set(0, 0.30, 0.66);
     g.add(gate);
+    // Broad wooden planks and iron straps read at gameplay zoom.
+    for (let k = 0; k < 4; k++) {
+      const plank = bevelBox(0.067, 0.013, 0.32, 0, k % 2 ? 0x786044 : 0x675037);
+      plank.position.set(-0.109 + k * 0.073, 0.31, 0.686); g.add(plank);
+    }
+    for (const y of [0.38, 0.55]) {
+      const strap = bevelBox(0.29, 0.013, 0.022, 0, 0x44473c);
+      strap.position.set(0, y, 0.697); g.add(strap);
+    }
     return g;
+  }
+
+  // Open lookout cap; shared by the base tower and all upgrade silhouettes.
+  function lookoutTop(g, width, cabinBase, legHeight) {
+    const top = cabinBase + 0.30;
+    for (let k = 0; k < 5; k++) {
+      const plank = bevelBox(0.079 * width, 0.40 * width, 0.025, 0, k % 2 ? 0x9a7950 : 0xa8885c);
+      plank.position.set((k - 2) * 0.081 * width, top, 0); g.add(plank);
+    }
+    for (const side of [-1, 1]) {
+      const front = bevelBox(0.51 * width, 0.065 * width, 0.10, 0.008, P.wall);
+      front.position.set(0, top + 0.025, side * 0.225 * width); g.add(front);
+      const edge = bevelBox(0.065 * width, 0.39 * width, 0.10, 0.008, P.rockSide);
+      edge.position.set(side * 0.225 * width, top + 0.025, 0); g.add(edge);
+      // Ladder rails slope from the ground to the timber deck.
+      g.add(strut([side * 0.07, 0.02, 0.34 * width], [side * 0.07, legHeight, 0.23 * width], 0.021, 0x997443));
+    }
+    const rungs = Math.max(4, Math.round(legHeight / 0.12));
+    for (let k = 1; k < rungs; k++) {
+      const t = k / rungs;
+      g.add(strut([-0.08, t * legHeight, (0.34 - 0.11 * t) * width], [0.08, t * legHeight, (0.34 - 0.11 * t) * width], 0.019, 0xb08b50));
+    }
+    const banner = bevelBox(0.15 * width, 0.012, 0.25, 0, 0x456575);
+    banner.position.set(0.16 * width, Math.max(0.04, legHeight - 0.24), 0.255 * width); g.add(banner);
+    const trim = bevelBox(0.15 * width, 0.014, 0.023, 0, 0xd2ad55);
+    trim.position.copy(banner.position); trim.position.y += 0.21; g.add(trim);
   }
 
   // ---------------- arrow tower: an enclosed lookout on four log stilts -------
@@ -209,6 +256,7 @@ export function createStructurePrefabs(ctx) {
     const cabin = bevelBox(0.42, 0.42, 0.3, 0.025, P.wall);
     cabin.position.y = cabinBase;
     baseAO(cabin, 0.74);
+    masonry.courses(cabin, 0.42, 0.42, 0.3, P.wall, 0.15);
     g.add(cabin);
     [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([sx, sz]) => {
       const slit = sx
@@ -219,10 +267,7 @@ export function createStructurePrefabs(ctx) {
     });
     // Radius is to the corners, so the eaves at the middle of each face sit at
     // r*cos45 -- it has to clear the 0.21 half-width to overhang at all.
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.19, 4), mat(P.roof));
-    roof.position.y = cabinBase + 0.3 + 0.065;
-    roof.rotation.y = Math.PI / 4;
-    g.add(roof);
+    lookoutTop(g, 1, cabinBase, legHeight);
     return g;
   }
 
@@ -397,6 +442,7 @@ export function createStructurePrefabs(ctx) {
     const cabin = bevelBox(0.42 * width, 0.42 * width, 0.3, 0.025, P.wall);
     cabin.position.y = cabinBase;
     baseAO(cabin, 0.74);
+    masonry.courses(cabin, 0.42 * width, 0.42 * width, 0.3, P.wall, 0.15);
     g.add(cabin);
 
     // Firing slits: one per face at T1, doubled on a wide platform. This is the
@@ -417,10 +463,7 @@ export function createStructurePrefabs(ctx) {
       }
     });
 
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.35 * width, 0.19, 4), mat(P.roof));
-    roof.position.y = cabinBase + 0.3 + 0.065;
-    roof.rotation.y = Math.PI / 4;
-    g.add(roof);
+    lookoutTop(g, width, cabinBase, legHeight);
 
     // The ballista line mounts a visible engine on the roof, so a flat-trajectory
     // tower never gets mistaken for an arcing one.
@@ -466,9 +509,13 @@ export function createStructurePrefabs(ctx) {
       const radius = (corner ? 0.09 : 0.062) * 0.9;
       const sides = corner ? 7 : 5;
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.9, radius, height, sides), mat(color));
+      shaft.geometry = shaft.geometry.toNonIndexed();
+      shaft.geometry.computeVertexNormals();
       shaft.position.set(x, height / 2, z);
       g.add(shaft);
       const tip = new THREE.Mesh(new THREE.ConeGeometry(radius * 1.08, corner ? 0.17 : 0.13, sides), mat(color));
+      tip.geometry = tip.geometry.toNonIndexed();
+      tip.geometry.computeVertexNormals();
       tip.position.set(x, height + (corner ? 0.085 : 0.065), z);
       g.add(tip);
     };

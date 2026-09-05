@@ -1,13 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 110">
-<path d="m18 43 35-18 31 17v47L50 105 18 86z" fill="#60472d"/>
-<g fill="#9d713e" stroke="#74532e" stroke-width="1">
-<path d="M22 70V31l5-13 6 12v45m3-8V24l6-13 5 14v45m3-5V20l6-13 5 15v46m3 4V28l6-13 5 15v46m2 7V35l6-13 5 13v48"/>
-</g>
-<g fill="#c29758" stroke="#936b37" stroke-width="1">
-<path d="M14 84V46l6-14 6 14v44zm13 9V54l6-16 6 16v45zm14 10V60l6-17 6 17v48z"/>
-</g>
-<g fill="#ae8146" stroke="#79592f" stroke-width="1">
-<path d="M54 108V60l6-17 6 15v43zm13-9V52l6-15 6 13v43zm13-8V45l6-16 6 13v43z"/>
-</g>
-<path d="m17 73 31 17m10 1 31-18" stroke="#60472d" stroke-width="4"/>
+<!-- Hollow square stockade: four taller corners, three posts along each wall. -->
+<defs>
+  <g id="post"><path d="M-4 0v-31l4-10 4 10V0z" fill="#b0834e"/><path d="M0-41 4-31V0L0 2z" fill="#9f7443"/></g>
+  <g id="corner"><path d="M-5 0v-38l5-13 5 13V0z" fill="#c4975f"/><path d="M0-51 5-38V0L0 3z" fill="#a97d49"/></g>
+</defs>
+<!-- Far walls remain visible above an open interior, with no solid center. -->
+<use href="#corner" x="50" y="63"/>
+<use href="#post" x="42" y="66"/><use href="#post" x="34" y="70"/><use href="#post" x="26" y="74"/>
+<use href="#post" x="58" y="66"/><use href="#post" x="66" y="70"/><use href="#post" x="74" y="74"/>
+<path d="m20 53 30-14 30 14" fill="none" stroke="#5b4229" stroke-width="3"/>
+<use href="#corner" x="18" y="80"/><use href="#corner" x="82" y="80"/>
+<use href="#post" x="26" y="84"/><use href="#post" x="34" y="88"/><use href="#post" x="42" y="92"/>
+<use href="#post" x="74" y="84"/><use href="#post" x="66" y="88"/><use href="#post" x="58" y="92"/>
+<path d="m18 64 32 16 32-16" fill="none" stroke="#5b4229" stroke-width="3"/>
+<use href="#corner" x="50" y="99"/>
 </svg>

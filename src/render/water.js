@@ -90,7 +90,7 @@ export function buildWater(ctx) {
   // A wide soft halo of shallows, then a thin crisp line of surf on the sand.
   footprints[1].filter(loop => signedArea(loop.points) > 0).forEach(loop => {
     shorelineRing(loop, 0.1, 0.66, 0.028, haloMat, true);
-    shorelineRing(loop, -0.04, 0.13, 0.05, foamMat, false);
+    shorelineRing(loop, -0.025, 0.045, 0.05, foamMat, false);
   });
 
   // The sky is this material, not scene.background: the plane is 320 units

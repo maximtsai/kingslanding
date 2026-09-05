@@ -1,14 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 110" fill="none">
-<path d="m25 49-6 53h8l7-49m34-4 8 53h8l-8-55" fill="#9b7546"/>
-<path d="m27 72 49 18m-48 0 44-22" stroke="#6e5335" stroke-width="5"/>
-<path d="m17 46 40-14 29 17-39 17z" fill="#bd9660"/>
-<path d="m17 46 30 13v8L17 54m30 5 39-10v8L47 67" fill="#80603c"/>
-<path d="M22 23 57 11l24 13v25L47 60 22 48z" fill="#e7dfc5"/>
-<path d="m47 36 34-12v25L47 60" fill="#bbbba8"/>
-<path d="m18 20 39-13 29 15-39 14z" fill="#fff0cf"/>
-<path d="m29 21 28-9 18 10-28 9z" fill="#9f9278"/>
-<path d="m18 20 29 16v7L18 28m29 8 39-14v8L47 43" fill="#d5cfb7"/>
-<path d="M33 35v11m29-8v11" stroke="#33444a" stroke-width="5"/>
-<path d="m56 57 1 23 8-3 6 3-1-27" fill="#456575"/>
-<path d="m57 61 12-4" stroke="#dfb45f" stroke-width="3"/>
+<!-- Match the open stone parapet and timber deck of the in-game lookout. -->
+<path d="m48 51-3 43h6l4-42m18-6 9 48h-6l-9-47" fill="#6b5335"/>
+<path d="m27 48-8 53h7l8-50m16 8-3 48h7l3-49" fill="#7a5f3e"/>
+<path d="m26 76 23 11 26-12m-48 17 23-26m4 27 18-31" stroke="#6b5335" stroke-width="4"/>
+<path d="m20 47 35-12 27 14-34 14z" fill="#9b7b50"/>
+<path d="m20 47 28 16v5L20 53m28 10 34-14v6L48 68" fill="#7a5f3e"/>
+<path d="m25 25 30-10 23 12v23L48 61 25 48z" fill="#e9e2cc"/>
+<path d="m48 38 30-11v23L48 61z" fill="#c7c5af"/>
+<path d="m19 22 36-12 28 14-35 13z" fill="#f0e7ce"/>
+<path d="m29 23 26-8 17 9-24 8z" fill="#a8885c"/>
+<path d="m19 22 29 15v7L19 30m29 7 35-13v8L48 44" fill="#d6d0b8"/>
+<path d="m34 37 4 2v12l-4-2zm28 1 4-2v12l-4 2z" fill="#3b3f36"/>
+<path d="m57 65 12-4v21l-6-3-6 5z" fill="#456575"/>
+<path d="m57 66 12-4" stroke="#d2ad55" stroke-width="3"/>
 </svg>

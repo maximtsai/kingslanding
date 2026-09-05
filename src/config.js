@@ -111,7 +111,7 @@ export const config = {
   },
 
   // ---- post grade ----
-  grade: { saturation: 1.02, contrast: 1.05, vignette: 0.46 },
+  grade: { saturation: 1.02, contrast: 1.05, vignette: 0 },
 
   // ---- projectile impacts ----
   projectiles: {

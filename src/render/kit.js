@@ -107,6 +107,29 @@ export function createSoftSprites(THREE, scene) {
 
   const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0.3, fog: false });
 
+  // Bake a broader rounded-square contact patch once. Buildings still share
+  // one instanced quad draw; units retain their lighter circular blobs.
+  const buildingCanvas = document.createElement('canvas');
+  buildingCanvas.width = buildingCanvas.height = 128;
+  const buildingContext = buildingCanvas.getContext('2d');
+  const pixels = buildingContext.createImageData(128, 128);
+  for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+    const nx = Math.abs((x + 0.5 - 64) / 64);
+    const ny = Math.abs((y + 0.5 - 64) / 64);
+    const radius = Math.pow(nx ** 4 + ny ** 4, 0.25);
+    const t = Math.max(0, Math.min(1, (radius - 0.38) / 0.62));
+    const i = (y * 128 + x) * 4;
+    pixels.data[i] = 36; pixels.data[i + 1] = 48; pixels.data[i + 2] = 39;
+    pixels.data[i + 3] = Math.round(255 * 0.48 * (1 - t * t * (3 - 2 * t)));
+  }
+  buildingContext.putImageData(pixels, 0, 0);
+  const buildingTex = new THREE.CanvasTexture(buildingCanvas);
+  buildingTex.minFilter = THREE.LinearFilter;
+  buildingTex.generateMipmaps = false;
+  const buildingBlobMat = new THREE.MeshBasicMaterial({
+    map: buildingTex, transparent: true, depthWrite: false, fog: false
+  });
+
   const quadGeo = new THREE.PlaneGeometry(1, 1);
   const group = new THREE.Group();
   scene.add(group);
@@ -120,5 +143,5 @@ export function createSoftSprites(THREE, scene) {
     return m;
   }
 
-  return { group, blob, blobMat };
+  return { group, blob, blobMat, buildingBlobMat };
 }

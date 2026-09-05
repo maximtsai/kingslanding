@@ -180,7 +180,7 @@ export function buildTerrain(ctx) {
 
   function tileTint(x, z) {
     const i = Math.floor(x / TILE + N / 2), j = Math.floor(z / TILE + N / 2);
-    return 0.975 + hash01(i * 7 + 13, j * 7 + 29) * 0.05;
+    return 0.93 + hash01(i * 7 + 13, j * 7 + 29) * 0.11;
   }
 
   // Terrace triangles are cut by the triangulator, not the tile grid, so the
@@ -218,7 +218,8 @@ export function buildTerrain(ctx) {
     const y = tier * TIER - DROP + CAP;
     // One tint per source tile (taken at the centroid so a tile never splits
     // mid-gradient) gives the meadow a quiet patchwork instead of flat paint.
-    const tint = tileTint((a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3);
+    const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3;
+    const tint = tileTint(cx, cz) * (0.97 + hash01(Math.round(cx * 19), Math.round(cz * 19)) * 0.055);
     tri([a[0], y, a[1]], [b[0], y, b[1]], [c[0], y, c[1]], P.grass,
       topShade(tier, a[0], a[1]) * tint, topShade(tier, b[0], b[1]) * tint, topShade(tier, c[0], c[1]) * tint);
   }
@@ -239,6 +240,36 @@ export function buildTerrain(ctx) {
         quad([a[0], rockTop, a[1]], [b[0], rockTop, b[1]], [b[0], lower, b[1]], [a[0], lower, a[1]], P.cliff,
           cliffShade(high, low, rockTop) * facet, cliffShade(high, low, rockTop) * facet,
           cliffShade(high, low, lower) * facet, cliffShade(high, low, lower) * facet);
+        // Shallow chiseled stone panels over the structural face. All vertices
+        // join this same terrain buffer; collision heights and contours stay exact.
+        const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const visibleBottom = Math.max(lower, -0.08);
+        const height = rockTop - visibleBottom;
+        if (length > 0.08 && height > 0.03) {
+          const nx = (b[1] - a[1]) / length, nz = -(b[0] - a[0]) / length;
+          const rows = Math.max(1, Math.ceil(height / 0.27));
+          const columns = Math.max(1, Math.ceil(length / 0.34));
+          const step = length / columns;
+          for (let row = 0; row < rows; row++) for (let cell = -1; cell < columns; cell++) {
+            const offset = (row % 2) * step * 0.5;
+            const start = Math.max(0.004, cell * step + offset + 0.004);
+            const end = Math.min(length - 0.004, (cell + 1) * step + offset - 0.004);
+            if (end - start < 0.025) continue;
+            const y0 = visibleBottom + row * height / rows + 0.004;
+            const y1 = visibleBottom + (row + 1) * height / rows - 0.004;
+            const p = (u, y, lift) => [a[0] + (b[0]-a[0]) * u / length + nx * lift, y, a[1] + (b[1]-a[1]) * u / length + nz * lift];
+            const bevel = Math.min(0.018, (end-start) * 0.12, (y1-y0) * 0.12);
+            const outer = [p(start,y1,0.002),p(end,y1,0.002),p(end,y0,0.002),p(start,y0,0.002)];
+            const inner = [p(start+bevel,y1-bevel,0.012),p(end-bevel,y1-bevel,0.012),p(end-bevel,y0+bevel,0.012),p(start+bevel,y0+bevel,0.012)];
+            const tone = 0.91 + hash01(i * 13 + cell * 3, tier * 19 + row * 7) * 0.105;
+            const hi = cliffShade(high,low,y1) * tone, lo = cliffShade(high,low,y0) * tone;
+            quad(...inner, P.cliff, hi, hi, lo, lo);
+            for (let k = 0; k < 4; k++) {
+              const n = (k+1)%4;
+              quad(outer[k],outer[n],inner[n],inner[k],P.cliff,lo,lo,hi,hi);
+            }
+          }
+        }
         // The thin lip on top: grass where this tier owns the edge, stone where
         // it is really the skirt of a taller neighbour.
         quad([a[0], top, a[1]], [b[0], top, b[1]], [b[0], rockTop, b[1]], [a[0], rockTop, a[1]],

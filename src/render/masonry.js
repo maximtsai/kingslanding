@@ -44,7 +44,7 @@ export function createMasonry(THREE) {
     return mesh;
   }
 
-  function roof(width, depth, height, color) {
+  function roof(width, depth, height, color, detail = 2) {
     const positions = [], colors = [];
     const tint = new THREE.Color(color);
     const corners = [[-width/2,0,depth/2],[width/2,0,depth/2],[width/2,0,-depth/2],[-width/2,0,-depth/2]];
@@ -59,7 +59,7 @@ export function createMasonry(THREE) {
       const shade = 0.91 + ((tile++ * 7) % 9) * 0.012;
       for (const p of [a,b,c]) { positions.push(...p); colors.push(tint.r*shade,tint.g*shade,tint.b*shade); }
     }
-    for (let i=0;i<4;i++) triangle(corners[i],corners[(i+1)%4],[0,height,0],2);
+    for (let i=0;i<4;i++) triangle(corners[i],corners[(i+1)%4],[0,height,0],detail);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
     geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));

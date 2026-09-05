@@ -221,31 +221,38 @@ export function createWorld(board) {
     if (world.phase !== PHASE.CASTLE) return false;
     if (!structures.canPlaceCastle(i, j)) return false;
     const keep = structures.castle(i, j);
-    // Stand the king at the gate. Without this he spawns on his own castle's
-    // floor, invisible inside two metres of stone.
-    //
-    // "Nearest the island's centre" rather than "first found": the raiders come
-    // from the water, so the centre-facing side is the side he should be
-    // watching from, and it is the side least likely to be hidden behind his own
-    // keep. It cannot fix every camera angle -- only the occlusion rule in
-    // section 15 can do that, and it is not built yet.
     const span = keep.span;
-    const middle = (board.N - 1) / 2;
-    let home = null, bestScore = Infinity;
-    for (let dj = -1; dj <= span; dj++) {
-      for (let di = -1; di <= span; di++) {
-        const ci = i + di, cj = j + dj;
-        if (ci >= i && ci < i + span && cj >= j && cj < j + span) continue;
-        if (!board.isLand(ci, cj) || structures.at(ci, cj)) continue;
-        // Prefer orthogonal neighbours over diagonal corners, then centre-ward.
-        const diagonal = (di < 0 || di >= span) && (dj < 0 || dj >= span) ? 1 : 0;
-        const score = diagonal * 10 + Math.hypot(ci - middle, cj - middle);
-        if (score < bestScore) { bestScore = score; home = [ci, cj]; }
+    // Move the king ONLY if the keep has closed over him -- otherwise he stays
+    // exactly where the player left him.
+    //
+    // Hero coordinates are tile-space with tile centres on the integers, so
+    // tile (i, j) covers [i - 0.5, i + 0.5). The old test compared his position
+    // against [i, i + span), which is that footprint shifted half a tile: it
+    // missed him when he stood on the near edge of the keep and fired when he
+    // stood a half tile clear of the far one. Since a player usually places the
+    // castle right beside the king, the second case is the one that kept
+    // hitting. Rounding to the tile he is standing on is both correct and how
+    // the rest of the sim maps a continuous position onto the grid.
+    const heroI = Math.round(world.hero.x), heroJ = Math.round(world.hero.z);
+    const buried = heroI >= i && heroI < i + span && heroJ >= j && heroJ < j + span;
+    if (buried) {
+      // Nearest free tile to where he already is, rather than a fixed side of
+      // the keep. Being set down behind his own castle reads as a teleport;
+      // stepping off the footprint reads as getting out of the way. The search
+      // widens past the immediate ring so a keep hemmed in by houses or water
+      // still has somewhere to put him.
+      const REACH = 3;
+      let home = null, bestDistance = Infinity;
+      for (let cj = j - REACH; cj < j + span + REACH; cj++) {
+        for (let ci = i - REACH; ci < i + span + REACH; ci++) {
+          if (ci >= i && ci < i + span && cj >= j && cj < j + span) continue;
+          if (!board.isLand(ci, cj) || structures.at(ci, cj)) continue;
+          const distance = Math.hypot(ci - world.hero.x, cj - world.hero.z);
+          if (distance < bestDistance) { bestDistance = distance; home = [ci, cj]; }
+        }
       }
+      if (home) heroControl.setHome(home[0], home[1]);
     }
-    const onCastleSpot = world.hero.x >= i && world.hero.x < i + span &&
-      world.hero.z >= j && world.hero.z < j + span;
-    if (onCastleSpot && home) heroControl.setHome(home[0], home[1]);
     world.phase = PHASE.BUILD;
     world.refreshPreview();
     takeSnapshot();

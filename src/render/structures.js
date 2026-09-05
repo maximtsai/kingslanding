@@ -148,7 +148,7 @@ export function createStructurePrefabs(ctx) {
         slit.position.set(sx * (0.66 + (face ? 0.205 : 0)), 0.88, sz * (0.66 + (face ? 0 : 0.205)));
         g.add(slit);
       }
-      const roof = masonry.roof(0.51, 0.51, 0.36, castleBlue);
+      const roof = masonry.roof(0.51, 0.51, 0.36, castleBlue, 0);
       roof.position.set(sx * 0.66, 1.24, sz * 0.66);
       g.add(roof);
       const finial = new THREE.Mesh(new THREE.OctahedronGeometry(0.05, 0), mat(castleGold));

@@ -327,12 +327,41 @@ export function createRenderer(THREE, host, board) {
     // The stage is transformed down on phones. Render for its displayed size,
     // instead of paying for a 720 x 1280 canvas times DPR on a 390px screen.
     const displayScale = Math.min(window.innerWidth / w, window.innerHeight / h) || 1;
-    const ratio = displayScale * Math.min(devicePixelRatio || 1, tier.weak ? 1 : (tier.mobile ? 1.5 : 2));
+    const cap = tier.weak ? 1 : (tier.mobile ? 1.5 : 2);
+    const dpr = devicePixelRatio || 1;
+
+    // LAND ON WHOLE DEVICE PIXELS, both ends.
+    //
+    // The stage is scaled by a CSS transform, so the canvas is composited at
+    // w * displayScale * dpr DEVICE pixels -- a float, and almost never a whole
+    // number. The drawing buffer is a whole number, because three.js floors it.
+    // Whenever the two disagree the browser resamples the entire frame to bridge
+    // the gap, and the sampling phase DRIFTS across the image: a 0.2% mismatch
+    // over 750 rows walks a pixel and a half, so some bands land dead on and
+    // others land half a pixel out, where a one-pixel outline becomes two grey
+    // ones. It reads as parts of the scene being softer than others, and it
+    // moves as the camera does. Six of ten common window sizes hit it.
+    //
+    // So the integer device size is chosen FIRST, and both the buffer and the
+    // canvas's CSS size are derived from it.
+    const target = Math.max(1, Math.round(w * displayScale * Math.min(dpr, cap)));
+    // The + 0.5 is not slop, it is required: three.js floors w * pixelRatio, and
+    // target / w * w comes back a hair UNDER target in floating point, so the
+    // plain ratio silently loses a pixel at some window sizes.
+    const ratio = (target + 0.5) / w;
     if (w === lastW && h === lastH && ratio === lastRatio) return;
     lastW = w; lastH = h; lastRatio = ratio;
     renderer.setPixelRatio(ratio);
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(bufferSize);
+    // CSS size derived from the buffer we actually got rather than from the
+    // target, so BOTH axes land on whole device pixels -- one pixel ratio cannot
+    // satisfy two independently rounded dimensions, but this can. Left at 100%
+    // the canvas would be w CSS pixels wide and the transform would map that
+    // back to a float. The overhang is under a pixel and #stage clips it.
+    const cssScale = displayScale * dpr;
+    canvas.style.width = (bufferSize.x / cssScale) + 'px';
+    canvas.style.height = (bufferSize.y / cssScale) + 'px';
     rt.setSize(bufferSize.x, bufferSize.y);
     projectionDirty = true;
   }

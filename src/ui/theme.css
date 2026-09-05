@@ -71,8 +71,6 @@ button:focus-visible { outline: 4px solid var(--paper); outline-offset: 5px; }
 #castle-prompt { background: #20373e; border: 2px solid var(--edge); border-radius: 26px; padding: 18px; }
 #castle-prompt .title { color: var(--paper); text-shadow: none; font-size: 28px; }
 #castle-prompt .sub { color: var(--muted); font-weight: 600; }
-#btn-castle-mode { animation: none; border: 2px solid #f2d28d; background: var(--gold); }
-#btn-castle-mode:hover { background: #edc77c; }
 #btn-cancel-place { background: var(--panel); border: 2px solid var(--edge); box-shadow: 0 4px 0 #14272b55; }
 #btn-cancel-place::before, #btn-cancel-place::after { background: var(--paper); }
 #options-card { border: 2px solid var(--edge); background: var(--panel); box-shadow: 0 8px 0 #14272b55; }

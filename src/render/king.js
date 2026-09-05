@@ -77,8 +77,15 @@ export function createKingRig(THREE, kit, P) {
   }
   capeGeo.setAttribute('position', new THREE.Float32BufferAttribute(capePositions, 3));
   capeGeo.setIndex(capeIndices);
-  capeGeo.computeVertexNormals();
-  const cape = new THREE.Mesh(capeGeo, new THREE.MeshLambertMaterial({ color: P.cape, side: THREE.DoubleSide }));
+  // FLAT, not smooth. Built indexed for the fold maths, then expanded so each
+  // triangle keeps its own normal. Averaging across the shared grid vertices
+  // turned the cape -- his largest surface and most of his silhouette -- into
+  // one soft red gradient, which is the first thing to go to mush once he is
+  // only forty pixels tall. Faceted, the folds still read at any size.
+  const capeFlat = capeGeo.toNonIndexed();
+  capeFlat.computeVertexNormals();
+  capeGeo.dispose();
+  const cape = new THREE.Mesh(capeFlat, new THREE.MeshLambertMaterial({ color: P.cape, side: THREE.DoubleSide }));
   king.add(cape);
 
   // Trace the cape's silhouette by walking its border vertices in order.
@@ -157,8 +164,12 @@ export function createKingRig(THREE, kit, P) {
   const crownPointsGeo = new THREE.BufferGeometry();
   crownPointsGeo.setAttribute('position', new THREE.Float32BufferAttribute(crownPositions, 3));
   crownPointsGeo.setIndex(crownIndices);
-  crownPointsGeo.computeVertexNormals();
-  king.add(new THREE.Mesh(crownPointsGeo, crownMat));
+  // Same reason as the cape: the points are the one part of him that has to
+  // stay legible as a crown from across the island.
+  const crownFlat = crownPointsGeo.toNonIndexed();
+  crownFlat.computeVertexNormals();
+  crownPointsGeo.dispose();
+  king.add(new THREE.Mesh(crownFlat, crownMat));
   const crownOutlineGeo = new THREE.BufferGeometry();
   crownOutlineGeo.setAttribute('position', new THREE.Float32BufferAttribute(crownOutlinePositions, 3));
   const crownOutline = new THREE.LineLoop(crownOutlineGeo, outlineMat);

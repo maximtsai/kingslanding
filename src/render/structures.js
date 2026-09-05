@@ -29,7 +29,7 @@ export function createStructurePrefabs(ctx) {
     baseAO(wall, 0.72);
     masonry.courses(wall, 0.62 * scale, 0.48 * scale, 0.46 * scale, P.wall, 0.15 * scale);
     g.add(wall);
-    const roof = masonry.roof(0.76 * scale, 0.64 * scale, 0.33 * scale, P.roof);
+    const roof = masonry.roof(0.76 * scale, 0.64 * scale, 0.33 * scale, P.roof, 0);
     roof.position.y = 0.46 * scale;
     g.add(roof);
     const door = bevelBox(0.12 * scale, 0.015 * scale, 0.22 * scale, 0, 0x6b5942);

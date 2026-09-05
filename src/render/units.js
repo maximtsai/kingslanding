@@ -130,7 +130,11 @@ export function applyGait(joints, gait, speed01, idleT, style) {
   // travel. It rides on top of any fixed stoop the rig has, which lives in its
   // own group precisely so this can overwrite torso.rotation without erasing it.
   joints.torso.rotation.y = -swing * G.YAW * speed01;
-  joints.torso.rotation.x = idle * 0.12 * rest + G.LEAN * speed01;
+  // Scaled per rig: the gait table is shared by every raider, but how far a
+  // given figure pitches into it is part of that figure's posture. Absent, or
+  // on the king's own rig, it is 1 and nothing changes.
+  const lean = joints.leanScale === undefined ? 1 : joints.leanScale;
+  joints.torso.rotation.x = idle * 0.12 * rest + G.LEAN * speed01 * lean;
 }
 
 export function createUnitView(THREE, board, soft, rigs, dynamicRoot, boatView = null) {

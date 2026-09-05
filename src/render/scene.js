@@ -82,6 +82,8 @@ export function buildScene(THREE, scene, board, seed) {
     staticRoot, dynamicRoot, kit, soft, rigs, prefabs, kingRig,
     // The gradient that stands in for the sky. See water.js.
     skyMaterial: water.skyMaterial,
+    // The surf's clock. Wants the frame delta once per rendered frame.
+    advanceWater: water.advance,
     // Tall props that are not gameplay objects but still hide people behind
     // them, so section 15's occlusion rule has to reach them too.
     scenery: [...(prefabs.scenery || []), ...decorScenery],

@@ -119,7 +119,13 @@ export const config = {
     embedLifetime: 5,
     overtravelDistance: 0.14,
     missGravity: 4.8,
-    submergedLifetime: 0.2,
+    // A splashed arrow slides under on its OWN terms, not on whatever velocity
+    // it happened to arrive with. sinkSpeed is slow enough to watch; the
+    // lifetime outlasts the descent so the shaft is well under the surface
+    // before the record goes, and the water plane hides it the whole way down.
+    submergedLifetime: 0.7,
+    sinkSpeed: 0.7,           // world units/s the shaft slides under
+    sinkDrift: 0.25,          // world units/s it keeps gliding forward as it goes
     rippleLifetime: 0.8,
 
     // ---- release scatter ----
@@ -1187,8 +1193,11 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     DEATH_FLY_HIP: 0.5,       // rad the thighs tuck up toward the chest
     DEATH_FLY_TUCK: 0.6,      // rad of extra knee bend folded into the curl
     DEATH_FLY_ARM: 0.3,       // rad the weapon is drawn in over the chest
-    DEATH_SINK_DELAY: 2,
-    DEATH_SINK_DURATION: 2,
+    // These two are what the player waits through: world.js keeps a corpse for
+    // their sum, and the wave cannot end until the last record is gone. 2 + 2
+    // left four seconds of standing about after the final kill.
+    DEATH_SINK_DELAY: 1.75,   // was 2
+    DEATH_SINK_DURATION: 1,   // was 2, then 0.5; 0.5 drained too abruptly to read
     DEATH_SINK_DEPTH: 0.7
   }
 };

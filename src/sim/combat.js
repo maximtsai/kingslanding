@@ -146,6 +146,16 @@ export function createCombat(world) {
     p.state = 'submerged';
     p.life = P.submergedLifetime;
     p.y = 0;
+    // Set the sink velocity HERE rather than inheriting the arrival one. Two
+    // separate bugs came out of inheriting it. An arrow that simply ran out of
+    // flight over open water has no velocity at all -- only beginMiss ever
+    // assigned vx/vy/vz -- so the submerged step drove its position to NaN and
+    // left a garbage instance on the surface. And an arrow that DID come in as
+    // a miss arrived at full shaft speed, roughly 8 units/s, which fired it out
+    // of sight within a couple of frames instead of sinking.
+    p.vx = p.dirX * P.sinkDrift;
+    p.vz = p.dirZ * P.sinkDrift;
+    p.vy = -P.sinkSpeed;
     ripples.push({ x: p.x, z: p.z, age: 0, life: P.rippleLifetime });
   }
 

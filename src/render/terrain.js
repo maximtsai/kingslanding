@@ -42,8 +42,14 @@ export function buildTerrain(ctx) {
 
   // Corner darkening where a taller tile abuts this one, including the convex
   // corners that touch only diagonally.
-  function vertexAO(i, j, fx, fz) {
-    const hh = at(i, j);
+  // `surface` is the height being SHADED, which is not always the tile's own:
+  // a tile taller than the tier being emitted still contributes its cut-off
+  // corner to the tier below. Measured against at(i, j) that corner sees no
+  // neighbour above it and comes out at full brightness, a pale notch against
+  // ground its own neighbours have darkened. Defaults to the tile's height, so
+  // every ordinary tile shades exactly as before.
+  function vertexAO(i, j, fx, fz, surface) {
+    const hh = surface === undefined ? at(i, j) : surface;
     let ao = 1.0;
     if (at(i + 1, j) > hh) ao *= 1.0 - 0.20 * fx * fx;
     if (at(i - 1, j) > hh) ao *= 1.0 - 0.20 * (1.0 - fx) * (1.0 - fx);
@@ -251,7 +257,7 @@ export function buildTerrain(ctx) {
     const shade = point => {
       const fx = Math.max(0, Math.min(1, (point[0] - x0) / TILE));
       const fz = Math.max(0, Math.min(1, (point[1] - z0) / TILE));
-      return vertexAO(i, j, fx, fz) * tint;
+      return vertexAO(i, j, fx, fz, tier) * tint;
     };
     const vertices = contour.concat(...clippedHoles);
     const contourVectors = contour.map(point => new THREE.Vector2(point[0], point[1]));
@@ -287,10 +293,17 @@ export function buildTerrain(ctx) {
           cliffShade(high, low, lower) * facet, cliffShade(high, low, lower) * facet);
         // Shallow chiseled stone panels over the structural face. All vertices
         // join this same terrain buffer; collision heights and contours stay exact.
+        //
+        // NOT ON TIER 1. The lowest wall runs from y = 0.05 down to the seabed,
+        // so the band that could carry panels is 0.13 tall and only the top 0.05
+        // of it clears the waterline -- a twentieth of a tile. It was paying for
+        // a full row of panelling along the entire coastline to detail a sliver
+        // nothing can see, and drowning the rest. The shore keeps the plain
+        // structural face and its grass lip.
         const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
         const visibleBottom = Math.max(lower, -0.08);
         const height = rockTop - visibleBottom;
-        if (length > 0.08 && height > 0.03) {
+        if (tier > 1 && length > 0.08 && height > 0.03) {
           const nx = (b[1] - a[1]) / length, nz = -(b[0] - a[0]) / length;
           const rows = Math.max(1, Math.ceil(height / 0.27));
           const columns = Math.max(1, Math.ceil(length / 0.34));
@@ -329,7 +342,13 @@ export function buildTerrain(ctx) {
     const naturalHoles = footprints[tier].filter(loop => signedArea(loop.points) < 0);
     const upper = tier < MAX_H ? footprints[tier + 1].filter(loop => signedArea(loop.points) > 0) : [];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      if (at(i, j) !== tier) continue;
+      // Tiles TALLER than this tier are emitted too, not skipped. The upper
+      // tier's contour is rounded, so it does not reach the corners of its own
+      // tiles -- and those corners are authored at the upper height, so the
+      // lower tier used to skip them as well. Nothing filled the notch and it
+      // opened straight onto the sea. The upper contour is already passed in as
+      // a hole below, so everything actually under the plateau is still cut away.
+      if (at(i, j) < tier) continue;
       const x0 = gridX(i), x1 = gridX(i + 1);
       const z0 = gridX(j), z1 = gridX(j + 1);
       const centre = [px(i), px(j)];

@@ -229,6 +229,10 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       feedback.consume(world.events);
       world.events.length = 0;
 
+      // The surf keeps running through a pause. Stopping it dead behind a menu
+      // reads as the game having crashed rather than as the game being paused.
+      scene.advanceWater(elapsed);
+
       // Thronefall carries its day/night rhythm in the light. Set every frame
       // rather than on the phase-change event, so the easing survives a pause,
       // a restart, or a level change without anything having to remember to

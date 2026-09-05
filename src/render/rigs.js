@@ -138,10 +138,17 @@ const TYPES = {
     arm: [0.055, 0.066, 0.185], shoulderX: 0.128, shoulderY: 0.384,
     armCant: 0.20,
     // Radians of forward pitch. 17 degrees read as a crouch rather than a
-    // posture; 3.4 is a stoop you notice without the figure looking folded.
+    // posture; 3.4 was a stoop you noticed, and stacked on top of the run's
+    // own lean it took the running figure to nearly 13 degrees, which read as
+    // bent over rather than as leaning in. Halved, and paired with leanScale
+    // below -- the two together are what the posture is, so tune them as a pair.
     // The sword counter-rotates by whatever this is (see below), so the two
     // cannot drift apart.
-    hunch: 0.06,
+    hunch: 0.03,
+    // How much of the run gait's LEAN this rig takes. The gait table is shared
+    // by every raider, so the grunt is straightened here rather than there --
+    // the archer is meant to stay stooped over a bow and keeps the full lean.
+    leanScale: 0.45,
     // No shoulder pads. The old value was [0.095, 0.128, 0.066]; the build path
     // below is intact, so restoring them is a matter of putting it back.
     //
@@ -508,7 +515,18 @@ export function createRigFactory(THREE, kit, P) {
     // KNEE_BEND travels with the joints because the animator adds its flexion on
     // top of it and the death pose has to be able to put it back. A copied
     // constant in units.js would be a second source of truth for the stance.
-    return { root, joints: { bob, torso, hips, knees, shoulders, kneeBase: KNEE_BEND }, type };
+    // leanScale rides with the joints for the same reason kneeBase does: the
+    // animator needs it every frame, and a copy in units.js would be a second
+    // source of truth for this rig's posture.
+    return {
+      root,
+      joints: {
+        bob, torso, hips, knees, shoulders,
+        kneeBase: KNEE_BEND,
+        leanScale: T.leanScale === undefined ? 1 : T.leanScale
+      },
+      type
+    };
   }
 
   return {

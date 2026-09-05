@@ -480,6 +480,7 @@
     background: #160f10; color: #ffb4ac; padding: 40px;
     font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
 </style>
+<link rel="stylesheet" href="./src/ui/theme.css">
 </head>
 <body>
 
@@ -542,13 +543,13 @@
 
   <div class="hud" id="bottom">
     <div id="build-panel">
-      <button class="tower-button" data-build="archer">
-        <div class="glyph glyph-archer"></div>
+      <button class="tower-button" data-build="archer" aria-pressed="false">
+        <img class="build-icon" src="./src/ui/archer.svg" alt="" width="100" height="104">
         <div class="name">Archer Tower</div>
         <div class="cost">15 gold</div>
       </button>
-      <button class="tower-button" data-build="barricade">
-        <div class="glyph glyph-barricade"></div>
+      <button class="tower-button" data-build="barricade" aria-pressed="false">
+        <img class="build-icon" src="./src/ui/barricade.svg" alt="" width="100" height="104">
         <div class="name">Barricade</div>
         <div class="cost">10 gold</div>
       </button>

@@ -181,7 +181,7 @@ export function createRenderer(THREE, host, board) {
   // grey; instead a soft warm key picks out facets, a cold rim keeps the faces
   // turned away from the sun blue rather than dead, and a large ambient floor
   // holds chalk reading as chalk.
-  const sun = new THREE.DirectionalLight(0xfff2dc, 0.34);
+  const sun = new THREE.DirectionalLight(0xffefd3, 0.46);
   sun.position.set(-8, 7, 5);
   scene.add(sun);
   const rim = new THREE.DirectionalLight(0xa8ccdf, 0.18);
@@ -189,7 +189,7 @@ export function createRenderer(THREE, host, board) {
   scene.add(rim);
   const hemi = new THREE.HemisphereLight(0xeaf4f8, 0xd6cfc0, 0.45);
   scene.add(hemi);
-  const ambient = new THREE.AmbientLight(0xfffdf8, 0.35);
+  const ambient = new THREE.AmbientLight(0xfffdf8, 0.25);
   scene.add(ambient);
 
   // ---------------- evening ----------------
@@ -314,11 +314,16 @@ export function createRenderer(THREE, host, board) {
 
   // ---------------- resize ----------------
   const bufferSize = new THREE.Vector2();
-  let lastW = 0, lastH = 0;
+  let lastW = 0, lastH = 0, lastRatio = 0;
   function resize() {
     const w = W(), h = H();
-    if (w === lastW && h === lastH) return;
-    lastW = w; lastH = h;
+    // The stage is transformed down on phones. Render for its displayed size,
+    // instead of paying for a 720 x 1280 canvas times DPR on a 390px screen.
+    const displayScale = Math.min(window.innerWidth / w, window.innerHeight / h) || 1;
+    const ratio = displayScale * Math.min(devicePixelRatio || 1, tier.weak ? 1 : (tier.mobile ? 1.5 : 2));
+    if (w === lastW && h === lastH && ratio === lastRatio) return;
+    lastW = w; lastH = h; lastRatio = ratio;
+    renderer.setPixelRatio(ratio);
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(bufferSize);
     rt.setSize(bufferSize.x, bufferSize.y);
@@ -326,6 +331,7 @@ export function createRenderer(THREE, host, board) {
   }
   const observer = new ResizeObserver(resize);
   observer.observe(host);
+  window.addEventListener('resize', resize);
   resize();
 
   return {
@@ -338,6 +344,7 @@ export function createRenderer(THREE, host, board) {
     // dead renderer alive and resizing forever.
     dispose() {
       observer.disconnect();
+      window.removeEventListener('resize', resize);
       const seen = new Set();
       scene.traverse(node => {
         if (node.geometry) node.geometry.dispose();

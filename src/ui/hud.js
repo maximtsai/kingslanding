@@ -27,9 +27,17 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   const teardown = [];
 
   // ---- fit the fixed-size stage into the window ----
+  const safeArea = document.createElement('div');
+  safeArea.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)';
+  document.body.appendChild(safeArea);
+  teardown.push(() => safeArea.remove());
   function fit() {
     const scale = Math.min(window.innerWidth / 720, window.innerHeight / 1280);
     stage.style.setProperty('--stage-scale', scale);
+    const insets = getComputedStyle(safeArea);
+    const letterbox = (window.innerHeight - 1280 * scale) / 2;
+    stage.style.setProperty('--hud-top', Math.max(24, (parseFloat(insets.paddingTop) - letterbox + 8) / scale) + 'px');
+    stage.style.setProperty('--hud-bottom', Math.max(24, (parseFloat(insets.paddingBottom) - letterbox + 8) / scale) + 'px');
   }
   window.addEventListener('resize', fit);
   teardown.push(() => window.removeEventListener('resize', fit));
@@ -148,6 +156,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     if (selected) inspecting = null;
     for (const button of buildButtons) {
       button.classList.toggle('on', button.dataset.build === selected);
+      button.setAttribute('aria-pressed', String(button.dataset.build === selected));
     }
     onSelectTower(selected);
     refreshPanels();
@@ -183,7 +192,10 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   function cancelPlacement() {
     selected = null;
     castleArming = false;
-    for (const button of buildButtons) button.classList.toggle('on', false);
+    for (const button of buildButtons) {
+      button.classList.toggle('on', false);
+      button.setAttribute('aria-pressed', 'false');
+    }
     castleModeButton.classList.toggle('on', false);
     castleHint.textContent = CASTLE_HINT_IDLE;
     clearPending();
@@ -536,6 +548,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
   // ---- dev overlay ----
   const dev = $('dev');
+  dev.classList.toggle('enabled', new URLSearchParams(location.search).has('dev'));
   $('dev-toggle').onclick = () => dev.classList.toggle('hidden');
   for (const [id, key] of [['g-sat', 'saturation'], ['g-con', 'contrast'], ['g-vig', 'vignette']]) {
     const slider = $(id);
@@ -842,7 +855,10 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
         .map(b => world.gold < config.towers[b.dataset.build].cost ? '1' : '0').join('');
       if (poor !== lastPoor) {
         lastPoor = poor;
-        buildButtons.forEach((b, k) => b.classList.toggle('poor', poor[k] === '1'));
+        buildButtons.forEach((b, k) => {
+          b.classList.toggle('poor', poor[k] === '1');
+          b.setAttribute('aria-label', `${config.towers[b.dataset.build].name || b.dataset.build}, ${config.towers[b.dataset.build].cost} gold${poor[k] === '1' ? ', not enough gold' : ''}`);
+        });
       }
 
       since += elapsed;
@@ -868,6 +884,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     selected = type;
     for (const button of buildButtons) {
       button.classList.toggle('on', button.dataset.build === selected);
+      button.setAttribute('aria-pressed', String(button.dataset.build === selected));
     }
     onSelectTower(selected);
   }

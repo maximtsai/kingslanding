@@ -8,10 +8,10 @@
 
 
 export const palette = {
-  water: 0x7cc0cd, shallow: 0x9dd2da, foam: 0xfbfcfc, sand: 0xece6d4,
-  grass: 0xa8c676, grassShade: 0x84a85d, bush: 0x6e9454, tree: 0x4b7040,
-  rockTop: 0xf8f6f2, rockSide: 0xe5e2dc, cliff: 0xf7f6f2, rockDeep: 0xcfcdc6,
-  wall: 0xf2f0e5, roof: 0xc6c0a7,
+  water: 0x518f9a, shallow: 0x82b4b8, foam: 0xe1e7d8, sand: 0xdcd3b6,
+  grass: 0x9db55f, grassShade: 0x7e9850, bush: 0x688549, tree: 0x49653a,
+  rockTop: 0xeee8d5, rockSide: 0xd4d2bf, cliff: 0xe3decb, rockDeep: 0xacae9e,
+  wall: 0xe9e2cc, roof: 0xbcb294,
   // Warm near-black, not the cool blue-black this used to be (0x2e2f35).
   // Section 15 gives gameplay warm-and-dark and forbids the environment any red
   // at all, so raiders leaning red is what the rule always asked for -- the old
@@ -19,6 +19,6 @@ export const palette = {
   // point, so they are exactly as dark as before and only the hue has moved.
   enemy: 0x3a2b2e, boat: 0x6a3f49, blood: 0xa2464e,
   crown: 0xf2c14e, cape: 0xc2352f, king: 0x22436a, accent: 0xc2352f,
-  skyTop: 0x6fb0c2, skyBottom: 0xc2d5d4, haze: 0x94c2cb,
+  skyTop: 0x315e6c, skyBottom: 0x75a5aa, haze: 0x6f9fa8,
   coolShade: 0x8bb6c4
 };

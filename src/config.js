@@ -533,7 +533,7 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
 
   // ---- economy (TDD 12) ----
   economy: {
-    startGold: 25,             // one archer tower, with change; wave 1 is a real choice
+    startGold: 50,             // two archer towers, with change; wave 1 is a real choice
     houseIncome: 10,           // per surviving house, at the start of build phase
     // Coins drop where a unit died and the king picks them up by walking over
     // them. TDD 12 is explicit that this is a feel-good mechanic and a reason to

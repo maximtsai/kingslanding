@@ -10,7 +10,7 @@
 import * as D from './util.js';
 
 
-const SUB = 3;          // terrace triangles refine down to TILE / SUB
+const SUB = 1;          // preserve terrace boundaries, but keep interior grass chunky
 const SEABED = -0.9;    // where the lowest tier's wall stops, well under water
 
 export function buildTerrain(ctx) {

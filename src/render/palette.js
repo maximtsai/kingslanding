@@ -1,6 +1,6 @@
 // Island diorama -- colour.
 //
-// Muted maritime palette: cool near-white stone, sage grass, hazy sea.
+// Bright maritime palette: clean white stone, fresh green grass, clear blue sea.
 // Saturated hues are reserved for banners and the king so they read instantly.
 // This is the file to open when the look needs adjusting; nothing else hard-codes
 // a scene colour except a handful of small material accents (timber, iron, cloth)
@@ -8,10 +8,14 @@
 
 
 export const palette = {
-  water: 0x518f9a, shallow: 0x82b4b8, foam: 0xe1e7d8, sand: 0xdcd3b6,
-  grass: 0x9db55f, grassShade: 0x7e9850, bush: 0x688549, tree: 0x49653a,
-  rockTop: 0xeee8d5, rockSide: 0xd4d2bf, cliff: 0xe3decb, rockDeep: 0xacae9e,
-  wall: 0xe9e2cc, roof: 0xbcb294,
+  water: 0x5aa2b1, shallow: 0x8bbec5, foam: 0xeef4ee, sand: 0xe3dcc0,
+  grass: 0x8cab6b, grassShade: 0x739159, bush: 0x428549, tree: 0x2d6b40,
+  rockTop: 0xc9d0c2, rockSide: 0x98a195, cliff: 0x939c8e, rockDeep: 0x7d857b,
+  // Stairs get their own pair rather than borrowing rockTop/rockSide. A
+  // flight is a path the player is meant to read across the island, so it
+  // stays bright while the cliff it is cut into goes darker around it.
+  stairTop: 0xe7eae0, stairSide: 0xc3c9bc,
+  wall: 0xf1eee2, roof: 0xd0c5a4,
   // Warm near-black, not the cool blue-black this used to be (0x2e2f35).
   // Section 15 gives gameplay warm-and-dark and forbids the environment any red
   // at all, so raiders leaning red is what the rule always asked for -- the old
@@ -19,6 +23,9 @@ export const palette = {
   // point, so they are exactly as dark as before and only the hue has moved.
   enemy: 0x3a2b2e, boat: 0x6a3f49, blood: 0xa2464e,
   crown: 0xf2c14e, cape: 0xc2352f, king: 0x22436a, accent: 0xc2352f,
-  skyTop: 0x315e6c, skyBottom: 0x75a5aa, haze: 0x6f9fa8,
-  coolShade: 0x8bb6c4
+  // The visible backdrop is a screen-vertical ramp on the water plane (water.js):
+  // skyTop is the TOP of the frame and skyBottom the bottom, so a clear day runs
+  // pale overhead into deeper blue toward the viewer -- not the other way round.
+  skyTop: 0x64aab8, skyBottom: 0x529dac, haze: 0x80adb8,
+  coolShade: 0x92bdcd
 };

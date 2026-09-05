@@ -181,15 +181,22 @@ export function createRenderer(THREE, host, board) {
   // grey; instead a soft warm key picks out facets, a cold rim keeps the faces
   // turned away from the sun blue rather than dead, and a large ambient floor
   // holds chalk reading as chalk.
-  const sun = new THREE.DirectionalLight(0xffefd3, 0.46);
+  //
+  // The whole rig is a bright NOON, not an overcast one. The previous levels
+  // summed to well under 1.0 of exposure, which is what made a saturated grass
+  // read as sage and white stone read as grey -- the palette was fine and the
+  // light was simply half a stop down. Sun and ambient carry most of the lift;
+  // the rim stays where it was so the shaded faces do not go flat as the rest
+  // brightens around them.
+  const sun = new THREE.DirectionalLight(0xfff6e4, 0.56);
   sun.position.set(-8, 7, 5);
   scene.add(sun);
-  const rim = new THREE.DirectionalLight(0xa8ccdf, 0.18);
+  const rim = new THREE.DirectionalLight(0xbcdcef, 0.20);
   rim.position.set(7, 2.5, -6);
   scene.add(rim);
-  const hemi = new THREE.HemisphereLight(0xeaf4f8, 0xd6cfc0, 0.45);
+  const hemi = new THREE.HemisphereLight(0xf2fbff, 0xdfe6d2, 0.50);
   scene.add(hemi);
-  const ambient = new THREE.AmbientLight(0xfffdf8, 0.25);
+  const ambient = new THREE.AmbientLight(0xfffdf8, 0.30);
   scene.add(ambient);
 
   // ---------------- evening ----------------

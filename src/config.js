@@ -661,10 +661,14 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
   // of it than a bright day, not more.
   evening: {
     seconds: 2.2,              // eased both ways; a hard cut reads as a bug
-    sun:     { color: 0xffa869, intensity: 0.34 },   // day: 0xfff2dc @ 0.34
-    rim:     { color: 0x8fa6d6, intensity: 0.18 },   // day: 0xa8ccdf @ 0.18
-    hemi:    { sky: 0xffc9a4, ground: 0xd8c3a2, intensity: 0.45 },  // day: 0xeaf4f8 / 0xd6cfc0 @ 0.45
-    ambient: { color: 0xffdcc2, intensity: 0.35 },   // day: 0xfffdf8 @ 0.35
+    // Intensities track the daylight rig in renderer.js one for one. The evening
+    // is a HUE shift, not a dimmer: the moment the two ends stop summing to the
+    // same exposure, dusk stops reading as warm light and starts reading as a
+    // scene that has simply gone dark.
+    sun:     { color: 0xffa869, intensity: 0.52 },   // day: 0xfff6e4 @ 0.56
+    rim:     { color: 0x8fa6d6, intensity: 0.20 },   // day: 0xbcdcef @ 0.20
+    hemi:    { sky: 0xffc9a4, ground: 0xd8c3a2, intensity: 0.50 },  // day: 0xf2fbff / 0xdfe6d2 @ 0.50
+    ambient: { color: 0xffdcc2, intensity: 0.30 },   // day: 0xfffdf8 @ 0.30
     // The backdrop carries most of the red. TDD 15 reserves saturated warm hues
     // for the king and the banners, so this stays a dusky rose rather than a
     // sunset orange -- far enough from the king's #c2352f that his cape still
@@ -679,9 +683,9 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     // in the frame leaves his #c2352f cape the most saturated thing on screen,
     // where an all-over orange would not.
     water: {
-      top: 0x6a6f9c,           // day: 0x6fb0c2, overhead
-      bottom: 0xd6a184,        // day: 0xc2d5d4, toward the viewer
-      pool: 0x9c7f92           // day: 0x7cc0cd, the light pool around the island
+      top: 0x8b90c4,           // day: 0x93c9e7, the top of the frame
+      bottom: 0xd6a184,        // day: 0x4f9ed2, toward the viewer
+      pool: 0xb393a8           // day: 0x69b2da, the light pool around the island
     },
     sky: 0xb2786c,             // the clear colour, kept in step even though the
                                // water plane hides it -- see above

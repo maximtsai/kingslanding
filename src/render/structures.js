@@ -191,18 +191,25 @@ export function createStructurePrefabs(ctx) {
     return g;
   }
 
+  // How tall the enclosed cabin stands under the open lookout. Shared so the
+  // cap's deck lands on the cabin roof instead of guessing at it.
+  const CABIN_HEIGHT = 0.22;
+
   // Open lookout cap; shared by the base tower and all upgrade silhouettes.
   function lookoutTop(g, width, cabinBase, legHeight) {
-    const top = cabinBase + 0.30;
+    const top = cabinBase + CABIN_HEIGHT;
     for (let k = 0; k < 5; k++) {
       const plank = bevelBox(0.079 * width, 0.40 * width, 0.025, 0, k % 2 ? 0x9a7950 : 0xa8885c);
       // Lift the planks just enough to avoid coplanar overlap with the lookout frame.
       plank.position.set((k - 2) * 0.081 * width, top + 0.002, 0); g.add(plank);
     }
     for (const side of [-1, 1]) {
-      const front = bevelBox(0.51 * width, 0.065 * width, 0.10, 0.008, P.wall);
+      const front = bevelBox(0.51 * width, 0.065 * width, 0.062, 0.008, P.wall);
       front.position.set(0, top + 0.025, side * 0.225 * width); g.add(front);
-      const edge = bevelBox(0.065 * width, 0.39 * width, 0.10, 0.008, P.rockSide);
+      // Same P.wall as the front rails: these four pieces are one parapet, and
+      // giving the side pair the stone grey made two of its faces read as a
+      // different material rather than as the shaded side of the same one.
+      const edge = bevelBox(0.065 * width, 0.39 * width, 0.062, 0.008, P.wall);
       edge.position.set(side * 0.225 * width, top + 0.025, 0); g.add(edge);
       // Ladder rails slope from the ground to the timber deck.
       g.add(strut([side * 0.07, 0.02, 0.34 * width], [side * 0.07, legHeight, 0.23 * width], 0.021, 0x997443));
@@ -221,7 +228,7 @@ export function createStructurePrefabs(ctx) {
   // ---------------- arrow tower: an enclosed lookout on four log stilts -------
   function arrowTower() {
     const g = new THREE.Group();
-    const timber = 0x7a5f3e, brace = 0x6b5335;
+    const timber = 0x5d4730, brace = 0x4e3b26;
     const legHeight = 0.62, spreadBase = 0.22, spreadTop = 0.17;
     // Legs lean in as they rise, which is what stops a stilted frame from
     // reading as four loose posts.
@@ -231,7 +238,7 @@ export function createStructurePrefabs(ctx) {
       sz * (spreadBase + (spreadTop - spreadBase) * t)
     ];
     const tilt = Math.atan2(spreadBase - spreadTop, legHeight);
-    const legGeo = new THREE.CylinderGeometry(0.03, 0.042, legHeight * 1.02, 6);
+    const legGeo = new THREE.CylinderGeometry(0.038, 0.053, legHeight * 1.02, 6);
     const corners = [[1, 1], [1, -1], [-1, -1], [-1, 1]];
     corners.forEach(([sx, sz]) => {
       const leg = new THREE.Mesh(legGeo, mat(timber));
@@ -240,13 +247,13 @@ export function createStructurePrefabs(ctx) {
       leg.rotation.x = -sz * tilt;
       g.add(leg);
     });
-    // A waist band all the way round, plus a diagonal on two opposing faces.
+    // A waist band all the way round. The frame reads as braced from the band
+    // and the leg taper alone; the face diagonals it used to carry crossed the
+    // whole silhouette and only added clutter at this size.
     corners.forEach(([sx, sz], k) => {
       const [nx, nz] = corners[(k + 1) % 4];
-      g.add(strut(legPoint(sx, sz, 0.46), legPoint(nx, nz, 0.46), 0.026, brace));
+      g.add(strut(legPoint(sx, sz, 0.46), legPoint(nx, nz, 0.46), 0.033, brace));
     });
-    g.add(strut(legPoint(1, -1, 0.06), legPoint(1, 1, 0.88), 0.022, brace));
-    g.add(strut(legPoint(-1, 1, 0.06), legPoint(-1, -1, 0.88), 0.022, brace));
 
     const deck = bevelBox(0.5, 0.5, 0.05, 0.012, timber);
     deck.position.y = legHeight;
@@ -254,16 +261,16 @@ export function createStructurePrefabs(ctx) {
     // The cabin overhangs the frame it stands on -- the silhouette that reads
     // as "watchtower" from across the island.
     const cabinBase = legHeight + 0.05;
-    const cabin = bevelBox(0.42, 0.42, 0.3, 0.025, P.wall);
+    const cabin = bevelBox(0.42, 0.42, CABIN_HEIGHT, 0.025, P.wall);
     cabin.position.y = cabinBase;
     baseAO(cabin, 0.74);
-    masonry.courses(cabin, 0.42, 0.42, 0.3, P.wall, 0.15);
+    masonry.courses(cabin, 0.42, 0.42, CABIN_HEIGHT, P.wall, 0.15);
     g.add(cabin);
     [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([sx, sz]) => {
       const slit = sx
-        ? bevelBox(0.022, 0.03, 0.13, 0, 0x3b3f36)
-        : bevelBox(0.03, 0.022, 0.13, 0, 0x3b3f36);
-      slit.position.set(sx * 0.207, cabinBase + 0.09, sz * 0.207);
+        ? bevelBox(0.022, 0.03, 0.10, 0, 0x3b3f36)
+        : bevelBox(0.03, 0.022, 0.10, 0, 0x3b3f36);
+      slit.position.set(sx * 0.207, cabinBase + 0.06, sz * 0.207);
       g.add(slit);
     });
     // Radius is to the corners, so the eaves at the middle of each face sit at
@@ -340,7 +347,7 @@ export function createStructurePrefabs(ctx) {
   }
 
   // Chiseled routes between tiers. Tread boundaries stay deterministic so the
-  // simulation can follow them; width, skew and chipped corners vary per flight.
+  // simulation can follow them; width, skew and corner jitter vary per flight.
   function rockStairway(lowI, lowJ, highI, highJ) {
     const g = new THREE.Group();
     const steps = STAIR_HEIGHTS.length;
@@ -358,35 +365,37 @@ export function createStructurePrefabs(ctx) {
       const skew = (rand() - 0.5) * 0.055;
       const x0 = -width / 2 + skew, x1 = width / 2 + skew;
       const z0 = -depth / 2, z1 = depth / 2;
-      const chipA = 0.025 + rand() * 0.065, chipB = 0.025 + rand() * 0.065;
-      const backA = 0.015 + rand() * 0.045, backB = 0.015 + rand() * 0.045;
-      const frontSkew = (rand() - 0.5) * 0.045;
       const bottom = low - 0.05;
       const top = stairSurfaceY(low, high, STAIR_HEIGHTS[k]);
-      // Eight-sided footprint with chipped front corners, lofted to a single
-      // apex vertex so the tread reads as a rough-hewn slab.
+      // Four corners, each nudged a couple of centimetres off true. A step is a
+      // cut block, so the shape stays a rectangular prism and the irregularity
+      // lives in how far off square its corners sit -- not in extra faces.
+      const jitter = () => (rand() - 0.5) * 0.03;
       const footprint = [
-        [x0 + chipA, z0], [x0, z0 + chipA], [x0, z1 - backA], [x0 + backA, z1],
-        [x1 - backB, z1 - (k === steps - 1 ? backB * 0.7 : 0)], [x1, z1 - backB],
-        [x1, z0 + chipB], [x1 - chipB, z0 + frontSkew]
+        [x0 + jitter(), z0 + jitter()], [x0 + jitter(), z1 + jitter()],
+        [x1 + jitter(), z1 + jitter()], [x1 + jitter(), z0 + jitter()]
       ];
+      const sides = footprint.length;
+      // Built NON-INDEXED, one triangle at a time. Sharing corner vertices and
+      // letting computeVertexNormals average across them is what made the sides
+      // shade like a cylinder; with the vertices split, every facet keeps its
+      // own normal and the block reads as cut rock.
       const positions = [];
-      footprint.forEach(p => positions.push(p[0], bottom, p[1]));
-      footprint.forEach(p => positions.push(p[0], top, p[1]));
-      positions.push(skew, top, (z0 + z1) / 2);
+      const tri = (a, b, c) => positions.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+      const lift = p => [footprint[p][0], top, footprint[p][1]];
+      for (let p = 1; p < sides - 1; p++) tri(lift(0), lift(p), lift(p + 1));
+      for (let p = 0; p < sides; p++) {
+        const n = (p + 1) % sides;
+        const a = footprint[p], b = footprint[n];
+        tri([a[0], bottom, a[1]], [b[0], bottom, b[1]], [b[0], top, b[1]]);
+        tri([a[0], bottom, a[1]], [b[0], top, b[1]], [a[0], top, a[1]]);
+      }
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      const indices = [];
-      for (let p = 0; p < footprint.length; p++) indices.push(16, 8 + p, 8 + (p + 1) % 8);
-      for (let p = 0; p < footprint.length; p++) {
-        const n = (p + 1) % 8;
-        indices.push(p, n, 8 + n, p, 8 + n, 8 + p);
-      }
-      geometry.setIndex(indices);
-      geometry.addGroup(0, 24, 0);      // tread
-      geometry.addGroup(24, 48, 1);     // riser
+      geometry.addGroup(0, (sides - 2) * 3, 0);              // tread
+      geometry.addGroup((sides - 2) * 3, sides * 6, 1);      // riser
       geometry.computeVertexNormals();
-      const step = new THREE.Mesh(geometry, [mat(P.rockTop), mat(P.rockSide)]);
+      const step = new THREE.Mesh(geometry, [mat(P.stairTop), mat(P.stairSide)]);
       step.position.set(along * dx, 0, along * dz);
       step.rotation.y = angle;
       g.add(step);
@@ -407,7 +416,7 @@ export function createStructurePrefabs(ctx) {
   function archerVariant(spec) {
     const g = new THREE.Group();
     const width = spec.width, storeys = spec.storeys;
-    const timber = 0x7a5f3e, brace = 0x6b5335;
+    const timber = 0x5d4730, brace = 0x4e3b26;
     const legHeight = 0.62 * storeys, spreadBase = 0.22 * width, spreadTop = 0.17 * width;
     const legPoint = (sx, sz, t) => [
       sx * (spreadBase + (spreadTop - spreadBase) * t),
@@ -415,7 +424,7 @@ export function createStructurePrefabs(ctx) {
       sz * (spreadBase + (spreadTop - spreadBase) * t)
     ];
     const tilt = Math.atan2(spreadBase - spreadTop, legHeight);
-    const legGeo = new THREE.CylinderGeometry(0.03, 0.042, legHeight * 1.02, 6);
+    const legGeo = new THREE.CylinderGeometry(0.038, 0.053, legHeight * 1.02, 6);
     const corners = [[1, 1], [1, -1], [-1, -1], [-1, 1]];
     corners.forEach(([sx, sz]) => {
       const leg = new THREE.Mesh(legGeo, mat(timber));
@@ -429,21 +438,19 @@ export function createStructurePrefabs(ctx) {
       const t = (s - 0.54) / storeys;
       corners.forEach(([sx, sz], k) => {
         const [nx, nz] = corners[(k + 1) % 4];
-        g.add(strut(legPoint(sx, sz, t), legPoint(nx, nz, t), 0.026, brace));
+        g.add(strut(legPoint(sx, sz, t), legPoint(nx, nz, t), 0.033, brace));
       });
     }
-    g.add(strut(legPoint(1, -1, 0.06), legPoint(1, 1, 0.88), 0.022, brace));
-    g.add(strut(legPoint(-1, 1, 0.06), legPoint(-1, -1, 0.88), 0.022, brace));
 
     const deck = bevelBox(0.5 * width, 0.5 * width, 0.05, 0.012, timber);
     deck.position.y = legHeight;
     g.add(deck);
 
     const cabinBase = legHeight + 0.05;
-    const cabin = bevelBox(0.42 * width, 0.42 * width, 0.3, 0.025, P.wall);
+    const cabin = bevelBox(0.42 * width, 0.42 * width, CABIN_HEIGHT, 0.025, P.wall);
     cabin.position.y = cabinBase;
     baseAO(cabin, 0.74);
-    masonry.courses(cabin, 0.42 * width, 0.42 * width, 0.3, P.wall, 0.15);
+    masonry.courses(cabin, 0.42 * width, 0.42 * width, CABIN_HEIGHT, P.wall, 0.15);
     g.add(cabin);
 
     // Firing slits: one per face at T1, doubled on a wide platform. This is the
@@ -453,11 +460,11 @@ export function createStructurePrefabs(ctx) {
       for (let k = 0; k < slots; k++) {
         const offset = slots === 1 ? 0 : (k - (slots - 1) / 2) * 0.15 * width;
         const slit = sx
-          ? bevelBox(0.022, 0.03, 0.13, 0, 0x3b3f36)
-          : bevelBox(0.03, 0.022, 0.13, 0, 0x3b3f36);
+          ? bevelBox(0.022, 0.03, 0.10, 0, 0x3b3f36)
+          : bevelBox(0.03, 0.022, 0.10, 0, 0x3b3f36);
         slit.position.set(
           sx * 0.207 * width + (sx ? 0 : offset),
-          cabinBase + 0.09,
+          cabinBase + 0.06,
           sz * 0.207 * width + (sz ? 0 : offset)
         );
         g.add(slit);

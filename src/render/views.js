@@ -157,6 +157,20 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   // Contact pools, one instanced draw for every structure on the island.
   const blobs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), soft.buildingBlobMat, CAP);
   blobs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const blobOpacity = new THREE.InstancedBufferAttribute(new Float32Array(CAP), 1);
+  blobs.geometry.setAttribute('instanceOpacity', blobOpacity);
+  soft.buildingBlobMat.onBeforeCompile = shader => {
+    shader.vertexShader = 'attribute float instanceOpacity; varying float vInstanceOpacity;\n' +
+      shader.vertexShader.replace('#include <begin_vertex>',
+        'vInstanceOpacity = instanceOpacity;\n#include <begin_vertex>');
+    shader.fragmentShader = 'varying float vInstanceOpacity;\n' +
+      shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        '#include <map_fragment>\ndiffuseColor.a *= vInstanceOpacity;'
+      );
+  };
+  soft.buildingBlobMat.customProgramCacheKey = () => 'building-shadow-construction-opacity-v1';
+  soft.buildingBlobMat.needsUpdate = true;
 
   // A flat, bright marker makes an upgradeable selection legible without adding
   // another floating label. It is updated from the selected tower id by sync().
@@ -661,11 +675,12 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       }
 
       if (blobCount < CAP) {
-        const size = ruinedHouse ? 0.95 : s.kind === 'house' ? 1.25 : s.kind === 'castle' ? 2.5
-                   : s.line === 'barricade' ? 0.95 : 1.1;
+        const size = ruinedHouse ? 0.85 : s.kind === 'house' ? 1.05 : s.kind === 'castle' ? 2.8
+                   : s.line === 'barricade' ? 1.15 : 1.1;
         position.set(wx, board.topY(s.i, s.j) + 0.012, wz);
         blobScale.set(size, size, size);
         matrix.compose(position, blobQuat, blobScale);
+        blobOpacity.setX(blobCount, Math.max(0, Math.min(1, rise)));
         blobs.setMatrixAt(blobCount++, matrix);
       }
 
@@ -700,7 +715,10 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       if (entry.count) entry.mesh.instanceMatrix.needsUpdate = true;
     }
     blobs.count = blobCount;
-    if (blobCount) blobs.instanceMatrix.needsUpdate = true;
+    if (blobCount) {
+      blobs.instanceMatrix.needsUpdate = true;
+      blobOpacity.needsUpdate = true;
+    }
     flames.count = flameCount;
     if (flameCount) flames.instanceMatrix.needsUpdate = true;
     blastYellow.count = yellowCount;

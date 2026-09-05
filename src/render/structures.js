@@ -196,7 +196,8 @@ export function createStructurePrefabs(ctx) {
     const top = cabinBase + 0.30;
     for (let k = 0; k < 5; k++) {
       const plank = bevelBox(0.079 * width, 0.40 * width, 0.025, 0, k % 2 ? 0x9a7950 : 0xa8885c);
-      plank.position.set((k - 2) * 0.081 * width, top, 0); g.add(plank);
+      // Lift the planks just enough to avoid coplanar overlap with the lookout frame.
+      plank.position.set((k - 2) * 0.081 * width, top + 0.002, 0); g.add(plank);
     }
     for (const side of [-1, 1]) {
       const front = bevelBox(0.51 * width, 0.065 * width, 0.10, 0.008, P.wall);

@@ -10,7 +10,6 @@
 import * as D from './util.js';
 
 
-const SUB = 1;          // preserve terrace boundaries, but keep interior grass chunky
 const SEABED = -0.9;    // where the lowest tier's wall stops, well under water
 
 export function buildTerrain(ctx) {
@@ -180,49 +179,95 @@ export function buildTerrain(ctx) {
 
   function tileTint(x, z) {
     const i = Math.floor(x / TILE + N / 2), j = Math.floor(z / TILE + N / 2);
-    return 0.93 + hash01(i * 7 + 13, j * 7 + 29) * 0.11;
+    return 0.95 + hash01(i * 7 + 13, j * 7 + 29) * 0.08;
   }
 
-  // Terrace triangles are cut by the triangulator, not the tile grid, so the
-  // owning tile has to be searched for before its occlusion can be sampled.
-  function topShade(tier, x, z) {
-    const ci = Math.floor(x / TILE + N / 2), cj = Math.floor(z / TILE + N / 2);
-    let owner = null;
-    for (let radius = 0; radius <= 2 && !owner; radius++) {
-      for (let dj = -radius; dj <= radius; dj++) for (let di = -radius; di <= radius; di++) {
-        const i = ci + di, j = cj + dj;
-        if (at(i, j) !== tier) continue;
-        const d = (x - px(i)) ** 2 + (z - px(j)) ** 2;
-        if (!owner || d < owner.d) owner = { i, j, d };
+  // Clip each tile against a contour without subdividing the whole terrace.
+  // Interior tiles remain identical two-triangle squares, while only tiles at
+  // rounded corners, divots, or upper-tier holes receive a few extra boundary
+  // vertices. This keeps the grass consistent without filling in the authored
+  // edge shapes or creating stretched triangulation fans.
+  function clipPolygonToRect(points, x0, z0, x1, z1) {
+    let clipped = points.slice();
+    const planes = [
+      [0, x0, true], [0, x1, false],
+      [1, z0, true], [1, z1, false]
+    ];
+    for (const [axis, bound, greater] of planes) {
+      if (!clipped.length) break;
+      const next = [];
+      const inside = point => greater ? point[axis] >= bound : point[axis] <= bound;
+      for (let k = 0; k < clipped.length; k++) {
+        const a = clipped[k], b = clipped[(k + 1) % clipped.length];
+        const aInside = inside(a), bInside = inside(b);
+        if (aInside !== bInside) {
+          const delta = b[axis] - a[axis];
+          const t = Math.abs(delta) > 1e-8 ? (bound - a[axis]) / delta : 0;
+          next.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+        }
+        if (bInside) next.push(b.slice());
+      }
+      clipped = next;
+    }
+    return clipped;
+  }
+
+  function polygonArea(points) {
+    return Math.abs(signedArea(points));
+  }
+
+  function polygonIntersectsRect(points, x0, z0, x1, z1) {
+    const insideRect = point => point[0] >= x0 && point[0] <= x1 && point[1] >= z0 && point[1] <= z1;
+    if (points.some(insideRect)) return true;
+    if ([[x0, z0], [x1, z0], [x1, z1], [x0, z1]].some(point => pointInPolygon(point, points))) return true;
+    const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const intersects = (a, b, c, d) => {
+      const abC = cross(a, b, c), abD = cross(a, b, d);
+      const cdA = cross(c, d, a), cdB = cross(c, d, b);
+      return (abC === 0 && abD === 0)
+        ? Math.max(Math.min(a[0], b[0]), Math.min(c[0], d[0])) <= Math.min(Math.max(a[0], b[0]), Math.max(c[0], d[0])) &&
+          Math.max(Math.min(a[1], b[1]), Math.min(c[1], d[1])) <= Math.min(Math.max(a[1], b[1]), Math.max(c[1], d[1]))
+        : abC * abD <= 0 && cdA * cdB <= 0;
+    };
+    const corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i], b = points[(i + 1) % points.length];
+      for (let k = 0; k < 4; k++) {
+        if (intersects(a, b, corners[k], corners[(k + 1) % 4])) return true;
       }
     }
-    if (!owner) return 1;
-    const fx = Math.max(0, Math.min(1, (x - gridX(owner.i)) / TILE));
-    const fz = Math.max(0, Math.min(1, (z - gridX(owner.j)) / TILE));
-    return vertexAO(owner.i, owner.j, fx, fz);
+    return false;
+  }
+
+  function emitGrassTile(i, j, tier, outer, holes) {
+    const y = tier * TIER - DROP + CAP;
+    const x0 = gridX(i), x1 = gridX(i + 1);
+    const z0 = gridX(j), z1 = gridX(j + 1);
+    const contour = clipPolygonToRect(outer.points, x0, z0, x1, z1);
+    if (contour.length < 3 || polygonArea(contour) < 1e-5) return;
+    const clippedHoles = holes.map(hole => clipPolygonToRect(hole.points, x0, z0, x1, z1))
+      .filter(hole => hole.length >= 3 && polygonArea(hole) > 1e-5);
+    const tint = tileTint(px(i), px(j)) * (0.985 + hash01(i * 19, j * 19) * 0.03);
+    const shade = point => {
+      const fx = Math.max(0, Math.min(1, (point[0] - x0) / TILE));
+      const fz = Math.max(0, Math.min(1, (point[1] - z0) / TILE));
+      return vertexAO(i, j, fx, fz) * tint;
+    };
+    const vertices = contour.concat(...clippedHoles);
+    const contourVectors = contour.map(point => new THREE.Vector2(point[0], point[1]));
+    const holeVectors = clippedHoles.map(hole => hole.map(point => new THREE.Vector2(point[0], point[1])));
+    THREE.ShapeUtils.triangulateShape(contourVectors, holeVectors).forEach(face => {
+      const a = vertices[face[0]], b = vertices[face[1]], c = vertices[face[2]];
+      const ma = shade(a), mb = shade(b), mc = shade(c);
+      if (cross2([b[0] - a[0], b[1] - a[1]], [c[0] - a[0], c[1] - a[1]]) > 0) {
+        tri([a[0], y, a[1]], [c[0], y, c[1]], [b[0], y, b[1]], P.grass, ma, mc, mb);
+      } else {
+        tri([a[0], y, a[1]], [b[0], y, b[1]], [c[0], y, c[1]], P.grass, ma, mb, mc);
+      }
+    });
   }
 
   const gridLines = [];
-
-  function emitTopTriangle(a, b, c, tier, depth) {
-    const edge = Math.max(Math.hypot(a[0] - b[0], a[1] - b[1]), Math.hypot(b[0] - c[0], b[1] - c[1]), Math.hypot(c[0] - a[0], c[1] - a[1]));
-    if (edge > TILE / SUB && depth < 5) {
-      const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-      const bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2];
-      const ca = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2];
-      emitTopTriangle(a, ab, ca, tier, depth + 1); emitTopTriangle(ab, b, bc, tier, depth + 1);
-      emitTopTriangle(ca, bc, c, tier, depth + 1); emitTopTriangle(ab, bc, ca, tier, depth + 1);
-      return;
-    }
-    if (cross2([b[0] - a[0], b[1] - a[1]], [c[0] - a[0], c[1] - a[1]]) > 0) [b, c] = [c, b];
-    const y = tier * TIER - DROP + CAP;
-    // One tint per source tile (taken at the centroid so a tile never splits
-    // mid-gradient) gives the meadow a quiet patchwork instead of flat paint.
-    const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3;
-    const tint = tileTint(cx, cz) * (0.97 + hash01(Math.round(cx * 19), Math.round(cz * 19)) * 0.055);
-    tri([a[0], y, a[1]], [b[0], y, b[1]], [c[0], y, c[1]], P.grass,
-      topShade(tier, a[0], a[1]) * tint, topShade(tier, b[0], b[1]) * tint, topShade(tier, c[0], c[1]) * tint);
-  }
 
   for (let tier = 1; tier <= MAX_H; tier++) {
     const rockTop = tier * TIER - DROP, top = rockTop + CAP;
@@ -278,26 +323,34 @@ export function buildTerrain(ctx) {
       });
     });
 
+    // Emit each authored tile through its local rounded contour. Open areas stay
+    // regular; only tiles touching a contour or hole acquire extra triangles.
     const outer = footprints[tier].filter(loop => signedArea(loop.points) > 0);
     const naturalHoles = footprints[tier].filter(loop => signedArea(loop.points) < 0);
     const upper = tier < MAX_H ? footprints[tier + 1].filter(loop => signedArea(loop.points) > 0) : [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      if (at(i, j) !== tier) continue;
+      const x0 = gridX(i), x1 = gridX(i + 1);
+      const z0 = gridX(j), z1 = gridX(j + 1);
+      const centre = [px(i), px(j)];
+      const loop = outer.find(candidate => pointInPolygon(centre, candidate.points) ||
+        polygonIntersectsRect(candidate.points, x0, z0, x1, z1));
+      if (!loop) continue;
+      const holes = naturalHoles.filter(hole => pointInPolygon(hole.points[0], loop.points));
+      upper.filter(hole => pointInPolygon(hole.points[0], loop.points)).forEach(hole => holes.push(hole));
+      emitGrassTile(i, j, tier, loop, holes);
+    }
+
+    // Retain the authored contour lines around divots and upper terraces.
     outer.forEach(loop => {
-      // Anything standing on this terrace -- a lagoon, or the tier above -- is a
-      // hole in it.
-      const holes = naturalHoles.filter(hole => pointInPolygon(hole.points[0], loop.points)).map(hole => hole.points);
-      upper.filter(hole => pointInPolygon(hole.points[0], loop.points)).forEach(hole => holes.push(hole.points));
-      const contour = loop.points.map(p => new THREE.Vector2(p[0], p[1]));
-      const holeVectors = holes.map(hole => hole.map(p => new THREE.Vector2(p[0], p[1])));
-      const vertices = loop.points.concat(...holes);
-      THREE.ShapeUtils.triangulateShape(contour, holeVectors).forEach(face => {
-        emitTopTriangle(vertices[face[0]], vertices[face[1]], vertices[face[2]], tier, 0);
-      });
       loop.points.forEach((a, i) => {
         const b = loop.points[(i + 1) % loop.points.length];
         gridLines.push(a[0], top + 0.004, a[1], b[0], top + 0.004, b[1]);
       });
-      holes.forEach(hole => hole.forEach((a, i) => {
-        const b = hole[(i + 1) % hole.length];
+      const holes = naturalHoles.filter(hole => pointInPolygon(hole.points[0], loop.points));
+      upper.filter(hole => pointInPolygon(hole.points[0], loop.points)).forEach(hole => holes.push(hole));
+      holes.forEach(hole => hole.points.forEach((a, i) => {
+        const b = hole.points[(i + 1) % hole.points.length];
         gridLines.push(a[0], top + 0.004, a[1], b[0], top + 0.004, b[1]);
       }));
     });

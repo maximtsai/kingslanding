@@ -375,6 +375,20 @@ export function createHero(world, flowHero) {
     const jumpLocked = stepCliffJump(dt);
     if (!jumpLocked && hero.goal) {
       const here = [Math.round(hero.x), Math.round(hero.z)];
+      // Once he is standing IN the goal tile, that tile's own centre is not a
+      // waypoint worth holding. Holding it made him walk past a tap near a tile
+      // edge, all the way to the centre -- up to snapInset, 0.35 of a tile --
+      // and then turn around and come back, because the waypoint only cleared
+      // on exact arrival and `atGoalTile` could not be true until it did.
+      //
+      // Only the goal tile's OWN centre is dropped this way. An escape waypoint
+      // (set when he starts inside a house's margin and has to walk out before
+      // routing) points somewhere else and is left alone, or he would cut the
+      // corner straight back through the structure it exists to get him around.
+      if (hero.waypoint && here[0] === hero.goal.i && here[1] === hero.goal.j &&
+        hero.waypoint[0] === hero.goal.i && hero.waypoint[1] === hero.goal.j) {
+        hero.waypoint = null;
+      }
       const atGoalTile = !hero.waypoint &&
         here[0] === hero.goal.i && here[1] === hero.goal.j;
       if (hero.waypoint && Math.hypot(hero.waypoint[0] - hero.x, hero.waypoint[1] - hero.z) < 1e-6) {

@@ -499,10 +499,10 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     attackRecovery: 0.3,
     reviveDelay: 6,            // TDD 13: +2s per further death in the same wave
     reviveIncrement: 2,
-    cliffAnticipation: 0.18,
-    cliffAirTime: 0.46,
-    cliffLanding: 0.22,
-    cliffHopHeight: 0.24,
+    cliffAnticipation: 0.12,
+    cliffAirTime: 0.32,
+    cliffLanding: 0.18,
+    cliffHopHeight: 0.16,
     cliffTakeoff: 0.38,       // tiles from the high tile centre; edge is at 0.5
     stairUpSpeed: 0.75,       // fraction of normal speed while climbing stairs
     walkAnimRate: 2,          // animation cadence only; does not alter movement speed
@@ -1128,7 +1128,14 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
       BOUNCE: 0.055,         // peak-to-peak vertical, centred: see applyGait
       LEAN: 0.16,            // rad, torso pitched into the run at reference speed
       SWAY: 0.085,
-      YAW: 0.055
+      YAW: 0.055,
+      // Planted-foot polish (applyGait). A sine hip swing moves fastest
+      // through the vertical, where a planted foot should be slowest; PLANT_HOLD
+      // blends the swing toward a squared curve so the leg holds near contact
+      // and snaps mid-stride. PLANT_DIP settles the body onto the support leg
+      // at the passing moment, shaving the bounce's peak.
+      PLANT_HOLD: 0.45,      // 0 = original sine, 1 = fully squared swing
+      PLANT_DIP: 0.012       // world units of extra settle at the passing moment
     },
 
     // ---- the melee swing ----

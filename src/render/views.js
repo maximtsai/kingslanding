@@ -12,6 +12,7 @@ import { lerpAngle } from '../sim/angles.js';
 import { applyGait } from './units.js';
 import { palette } from './palette.js';
 import { flattenGroup } from './flatten.js';
+import { muzzleHeight } from '../sim/los.js';
 
 const A = config.anim;
 
@@ -32,6 +33,7 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   const bars = new Map();           // structure id -> { bar, fill }
   const construction = new Map();   // structure id -> visual construction age
   const repairPop = new Map();      // structure id -> repair bounce age
+  const hits = new Map();           // structure id -> per-hit shudder age
   const liveStructures = new Set();
 
   const barGeo = new THREE.PlaneGeometry(0.62, 0.075);
@@ -50,6 +52,26 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
   const blobQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
   const blobScale = new THREE.Vector3();
   const structureScale = new THREE.Vector3(1, 1, 1);
+
+  // Muzzle flashes for structure shots, one pooled billboarded quad each.
+  // The `shot` event only carries tile x/z, so a flash sits at the muzzle
+  // height of its tile -- the same line the projectile actually left from
+  // (sim/los.js), which keeps the pop glued to the arrow's origin.
+  const FLASH_CAP = 24;
+  const flashGeo = new THREE.PlaneGeometry(0.17, 0.17);
+  const flashBase = new THREE.MeshBasicMaterial({
+    color: 0xfff0b8, transparent: true, opacity: 0, depthWrite: false,
+    toneMapped: false
+  });
+  const flashes = Array.from({ length: FLASH_CAP }, () => {
+    const mesh = new THREE.Mesh(flashGeo, flashBase.clone());
+    mesh.visible = false;
+    mesh.renderOrder = 3;
+    mesh.frustumCulled = false;
+    dynamicRoot.add(mesh);
+    return { mesh, age: Infinity, x: 0, y: 0, z: 0 };
+  });
+  let flashCursor = 0;
 
   // Opaque, low-poly puffs: large enough to hide the ground intersection while
   // a building rises, but still one draw regardless of how many are active.
@@ -564,16 +586,40 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       const shakeTiltX = Math.sin(shakePhase * 0.83) * shakeTiltAmp * shakeEnvelope;
       const shakeTiltZ = Math.cos(shakePhase * 1.07) * shakeTiltAmp * shakeEnvelope;
 
+      // Per-hit shudder: a short one-shot pulse, deliberately subtler than
+      // the demolition shake -- a quick squash-and-recover so a struck
+      // building visibly reacts without vibrating. Each new hit restarts it.
+      let hitA = 0;
+      if (hits.has(s.id)) {
+        const hAge = hits.get(s.id) + (world.paused ? 0 : elapsed);
+        if (hAge >= 0.3) hits.delete(s.id);
+        else { hits.set(s.id, hAge); hitA = Math.sin(Math.PI * hAge / 0.3); }
+      }
+      const hitPhase = s.id * 4.7;
+      const hitJitter = 0.012 * hitA;    // world units, intentionally tiny
+      const hitTilt = 0.018 * hitA;      // rad, barely off level
+      const hitSquash = 0.02 * hitA;
+
       // TDD 7 keeps a rotation field on every tower even though only the
       // renderer reads it today; honouring it now is what makes directional
       // towers a later tuning change rather than a refactor.
-      euler.set(shakeTiltX, s.kind === 'tower' ? s.rotation : 0, shakeTiltZ);
+      euler.set(shakeTiltX + Math.sin(hitPhase) * hitTilt,
+                s.kind === 'tower' ? s.rotation : 0,
+                shakeTiltZ + Math.cos(hitPhase * 1.3) * hitTilt);
       quaternion.setFromEuler(euler);
       const pop = repairPop.has(s.id) ? repairPop.get(s.id) : Infinity;
       const popT = pop === Infinity ? 0 : Math.min(1, pop / 0.48);
       const popHeight = pop === Infinity ? 0 : Math.sin(Math.PI * popT) * 0.16;
-      position.set(wx + shakeX, wy - riseDepth * (1 - rise) + popHeight - sink, wz + shakeZ);
-      structureScale.set(0.94 + rise * 0.06, 1 + (pop === Infinity ? 0 : Math.sin(Math.PI * popT) * 0.12), 0.94 + rise * 0.06);
+      position.set(
+        wx + shakeX + Math.sin(hitPhase * 0.9) * hitJitter,
+        wy - riseDepth * (1 - rise) + popHeight - sink,
+        wz + shakeZ + Math.cos(hitPhase) * hitJitter
+      );
+      structureScale.set(
+        0.94 + rise * 0.06 - hitSquash,
+        1 + (pop === Infinity ? 0 : Math.sin(Math.PI * popT) * 0.12) + hitSquash * 0.5,
+        0.94 + rise * 0.06 - hitSquash
+      );
       matrix.compose(position, quaternion, structureScale);
 
       // TDD 15. Houses and the castle occlude just as readily as a tower does,
@@ -661,6 +707,23 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
     if (yellowCount) blastYellow.instanceMatrix.needsUpdate = true;
     blastRed.count = redCount;
     if (redCount) blastRed.instanceMatrix.needsUpdate = true;
+
+    // Muzzle flashes: a short bright pop that fades as it scales up, always
+    // facing the camera like the health bar does.
+    const flashDt = world.paused ? 0 : elapsed;
+    for (const f of flashes) {
+      if (f.age === Infinity) continue;
+      f.age += flashDt;
+      const t = f.age / 0.14;
+      if (t >= 1) { f.mesh.visible = false; f.age = Infinity; continue; }
+      const k = t * t * (3 - 2 * t);
+      f.mesh.material.opacity = 0.85 * (1 - t);
+      f.mesh.position.set(f.x, f.y, f.z);
+      f.mesh.quaternion.copy(camera.quaternion);
+      f.mesh.scale.set(0.5 + 0.9 * k, 0.5 + 0.9 * k, 1);
+      f.mesh.visible = true;
+    }
+
     updateDust(world.paused ? 0 : elapsed);
 
     // A removed structure (sold, or wiped by a restart) leaves the instance
@@ -684,6 +747,9 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
     }
     for (const id of construction.keys()) {
       if (!liveStructures.has(id)) construction.delete(id);
+    }
+    for (const id of hits.keys()) {
+      if (!liveStructures.has(id)) hits.delete(id);
     }
     for (const id of [...ghosts.keys()]) {
       if (!occluders.has(id)) releaseGhost(id);
@@ -729,6 +795,29 @@ export function createStructureView(THREE, board, prefabs, soft, dynamicRoot, sc
       for (let k = 0; k < D.dustPuffs; k++) {
         startDustPuff(s, board.px(s.x), groundY, 200 + k);
       }
+    },
+
+    // A per-hit shudder, driven from the structureHit event: a quick squash-
+    // and-recover so a struck building visibly reacts without vibrating.
+    hit(s) {
+      if (!s) return;
+      hits.set(s.id, 0);
+    },
+
+    // The cheapest release flash there is: one billboarded pop at the muzzle
+    // of the firing tower, spawned from the shot event (tile x/z only).
+    flash(tileX, tileZ) {
+      const f = flashes[flashCursor++ % FLASH_CAP];
+      f.age = 0;
+      // The shot event carries the footprint CENTRE in tile space: towers fire
+      // from integer i, the 2x2 castle from i + 0.5. The projectile launches
+      // from the ANCHOR tile (muzzleHeight(board, i, j)), so floor() of the
+      // centre recovers the anchor for both -- round() would send the castle's
+      // flash to the next tile over, which sits at the wrong tier on a slope.
+      f.x = board.px(tileX);
+      f.y = muzzleHeight(board, Math.floor(tileX), Math.floor(tileZ));
+      f.z = board.px(tileZ);
+      f.mesh.visible = true;
     },
 
     // For tests and the dev overlay: what is currently being seen through.
@@ -1243,6 +1332,86 @@ export function createCoinView(THREE, board, dynamicRoot) {
   }
 
   return { sync };
+}
+
+// ----------------------------------------------------------------- guide
+// The arrival guide deliberately matches the king's move destination marker:
+// the same torus-and-triangle language, scaled up so it reads as a tutorial
+// target rather than as an ordinary move order.
+export function createGuideView(THREE, board, dynamicRoot) {
+  const SINK = config.board.SINK;
+  const GUIDE_SCALE = 1.35;
+
+  const group = new THREE.Group();
+  group.visible = false;
+  group.renderOrder = 4;
+  dynamicRoot.add(group);
+
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffff70, depthWrite: false, toneMapped: false
+  });
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.18, 0.024, 5, 20),
+    material
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.scale.setScalar(GUIDE_SCALE);
+  group.add(ring);
+
+  const pointer = new THREE.Mesh(
+    new THREE.ConeGeometry(0.13, 0.28, 3),
+    material
+  );
+  pointer.rotation.x = Math.PI;
+  pointer.position.y = 0.30;
+  pointer.scale.setScalar(GUIDE_SCALE);
+  group.add(pointer);
+
+  let guideTime = 0;
+  let entranceAge = 1.25;
+  let shownI = null;
+  let shownJ = null;
+  let currentTarget = null;
+  const ENTRANCE = 1.25;
+
+  return {
+    show(targetI, targetJ) {
+      const x = board.px(targetI);
+      const z = board.px(targetJ);
+      const y = board.topY(targetI, targetJ) - SINK + 0.02;
+      const changed = !group.visible || shownI !== targetI || shownJ !== targetJ;
+      group.position.set(x, y, z);
+      group.visible = true;
+      currentTarget = { i: targetI, j: targetJ };
+      if (changed) {
+        shownI = targetI;
+        shownJ = targetJ;
+        entranceAge = 0;
+        guideTime = 0;
+        group.scale.setScalar(0.04);
+      }
+    },
+    hide() {
+      group.visible = false;
+      currentTarget = null;
+    },
+    sync(elapsed) {
+      if (!group.visible) return;
+      guideTime += elapsed;
+      entranceAge = Math.min(ENTRANCE, entranceAge + elapsed);
+      const t = entranceAge / ENTRANCE;
+      // An under-damped ease gives the marker a deliberately oversized first
+      // rebound before it settles at full size over 1.25 seconds.
+      const bounce = 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 4.5);
+      group.scale.setScalar(Math.max(0.04, bounce));
+      // Keep the ring fixed like the move marker; only the larger triangle bobs
+      // gently up and down to draw the eye without looking noisy.
+      pointer.position.y = 0.30 + Math.sin(guideTime * 3.2) * 0.07;
+    },
+    get target() {
+      return currentTarget;
+    }
+  };
 }
 
 // ---------------------------------------------------------------------- hero

@@ -42,6 +42,10 @@ export function createFeedback(world, audio, view, views) {
     shot(e) {
       if (e.kind === 'molotov') { audio.play('molotov'); return; }
       if (!e.fromStructure) { audio.play('enemyBow'); return; }
+      // A release pop at the muzzle so a volley's launch reads as clearly as
+      // its impact. The flash sits exactly where the arrow left from (the shot
+      // event carries the same tile the projectile's `from` used).
+      if (V.structureView && V.structureView.flash) V.structureView.flash(e.x, e.z);
       audio.play(e.trajectory === 'flat' ? 'ballista' : 'bow');
     },
     // The windup, not the landing: `meleeHit` still fires when the blow
@@ -72,7 +76,12 @@ export function createFeedback(world, audio, view, views) {
     footstep() { audio.play('footstep'); },
 
     // ---- structures ----
-    structureHit() { audio.play('structureHit'); },
+    structureHit(e) {
+      audio.play('structureHit');
+      // The visual half: a brief shudder on the struck building itself, so a
+      // barricade being bashed reads in the picture, not just the mix.
+      if (V.structureView && V.structureView.hit) V.structureView.hit(e.structure);
+    },
     structureDestroyed(e) {
       audio.play('structureDown');
       if (V.structureView && V.structureView.demolish) V.structureView.demolish(e.structure);

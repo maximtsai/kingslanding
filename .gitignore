@@ -1,6 +1,7 @@
 # Local tool metadata
 .claude/
 .freebuff/
+.capture-profile/
 
 # Distribution output
 /dist/

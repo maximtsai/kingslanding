@@ -294,6 +294,16 @@
      rather than distributed around the circle, so the same choice is always in
      the same place and the gesture becomes muscle memory. A tower with one
      upgrade leaves the second seat empty rather than re-centring the first. */
+  #guide-click-here {
+    display: none; position: absolute; z-index: 9;
+    transform: translate(-50%, -100%);
+    padding: 8px 16px; border-radius: 999px;
+    background: #000; color: #fff; white-space: nowrap;
+    font-size: 21px; font-weight: 900; letter-spacing: .08em;
+    box-shadow: 0 4px 12px rgba(0,0,0,.35);
+    pointer-events: none;
+  }
+
   #tower-radial { left: 0; top: 0; display: none; }
   #tower-radial .radial-ring {
     position: absolute; left: -84px; top: -84px; width: 168px; height: 168px;
@@ -342,10 +352,10 @@
     background: transparent; border: 0; border-radius: 0; padding: 18px 20px;
   }
   #castle-prompt .title {
-    font-size: 28.5px; font-weight: 900; letter-spacing: .08em; color: var(--gold);
+    font-size: 30.5px; font-weight: 900; letter-spacing: .08em; color: var(--gold);
     text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
   }
-  #castle-prompt .sub { font-size: 18px; font-weight: 800; color: rgba(231,238,239,.8); }
+  #castle-prompt .sub { font-size: 22px; font-weight: 800; color: #000; }
 
   /* Siting the castle is ARMED, never automatic (TDD 4). Until this is pressed
      a tap means what it means everywhere else -- move the king -- so the very
@@ -356,8 +366,27 @@
     border: 5px solid #000; background: #fff;
     color: #000; cursor: pointer; display: grid; place-items: center;
     font-family: inherit;
+    animation: castle-button-attention 3s ease-in-out infinite;
   }
   #btn-castle-mode:hover { background: #fff; }
+  @keyframes castle-button-attention {
+    0%, 60%, 100% {
+      transform: translateY(0) scale(1);
+      box-shadow: 0 0 0 0 rgba(242,193,78,0);
+    }
+    68% {
+      transform: translateY(-12px) scale(1.12);
+      box-shadow: 0 0 0 14px rgba(242,193,78,.38);
+    }
+    78% {
+      transform: translateY(3px) scale(.97);
+      box-shadow: 0 0 0 7px rgba(242,193,78,.22);
+    }
+    88% {
+      transform: translateY(-4px) scale(1.04);
+      box-shadow: 0 0 0 3px rgba(242,193,78,.10);
+    }
+  }
   #btn-castle-mode.on {
     background: var(--gold); border-color: #000; color: #000;
     transform: translateY(3px);
@@ -493,6 +522,8 @@
 
   <!-- Anchored to the structure, positioned every frame from hud.js. Scaling
        happens on this element, so the seats scale with it as one piece. -->
+  <div class="hud" id="guide-click-here">CLICK HERE</div>
+
   <div class="hud" id="tower-radial">
     <div class="radial-ring"></div>
     <button class="radial-btn" id="radial-opt-a"></button>
@@ -531,7 +562,7 @@
 
     <div id="castle-prompt">
       <div class="title">PLACE YOUR CASTLE</div>
-      <div class="sub" id="castle-hint">Choose the castle button, then pick a flat 2&times;2 site.</div>
+      <div class="sub" id="castle-hint">Castles require a flat 2&times;2 area</div>
       <button id="btn-castle-mode" aria-label="Place the castle">
         <div class="glyph-castle"></div>
       </button>

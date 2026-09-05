@@ -51,13 +51,26 @@ export function applyGait(joints, gait, speed01, idleT, style) {
   const legAmp = G.LEG_SWING * speed01;
   const armAmp = legAmp * G.ARM_RATIO;
 
+  // PLANTED-FOOT POLISH. A raw sine hip swing moves fastest through the
+  // vertical -- exactly where a planted foot should be slowest, which is the
+  // tell of a foot skating over the ground. Blending the swing toward a
+  // squared curve (PLANT_HOLD) holds the leg near the crossing and lets it
+  // snap mid-stride: identical amplitude at full extension, roughly half the
+  // angular velocity at contact. PLANT_DIP (below) settles the body onto the
+  // support leg at the same moment. Both scale out at rest, so a standing
+  // figure is untouched.
+  // Guarded with || 0: profiles that predate the polish (the king's `stride`,
+  // or a partial per-enemy profile) simply keep the original sine swing.
+  const plant = (G.PLANT_HOLD || 0) * speed01;
+  const swingE = swing * (plant + (1 - plant) * Math.abs(swing));
+
   // Legs in opposition; arms counter-swing against the leg on their own side.
   // Positive hip rotation trails the leg BEHIND the body, so leg 0 is trailing
   // while sin(gait) > 0 and leading while it is negative.
-  joints.hips[0].rotation.x = swing * legAmp;
-  joints.hips[1].rotation.x = -swing * legAmp;
-  joints.shoulders[0].rotation.x = -swing * armAmp;
-  joints.shoulders[1].rotation.x = swing * armAmp * A.SPEAR_DAMP;
+  joints.hips[0].rotation.x = swingE * legAmp;
+  joints.hips[1].rotation.x = -swingE * legAmp;
+  joints.shoulders[0].rotation.x = -swingE * armAmp;
+  joints.shoulders[1].rotation.x = swingE * armAmp * A.SPEAR_DAMP;
 
   // KNEES ARE WHAT MAKE IT A RUN. A leg that scissors straight through reads as
   // a mannequin sliding along; the tell of a run is the trailing leg folding up
@@ -103,7 +116,12 @@ export function applyGait(joints, gait, speed01, idleT, style) {
   const idle = Math.sin(idleT);
   const rest = (1 - speed01) * A.IDLE_SCALE;
   joints.bob.position.y =
-    Math.cos(gait * 2) * 0.5 * G.BOUNCE * speed01 + idle * G.BOUNCE * rest;
+    Math.cos(gait * 2) * 0.5 * G.BOUNCE * speed01
+    // The passing moment, when the support leg is vertical and taking the
+    // weight: a shallow settle shaves the bounce's peak, so the body pushes
+    // off the planted foot instead of riding on top of it.
+    - (G.PLANT_DIP || 0) * speed01 * (1 - Math.abs(swing))
+    + idle * G.BOUNCE * rest;
   joints.bob.rotation.z = swing * G.SWAY * speed01;
 
   // Torso counter-rotates against the arms, leans into the run, and breathes

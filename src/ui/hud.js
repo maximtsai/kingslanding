@@ -165,7 +165,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // bottom bar until the castle is placed or placement is abandoned.
   const castleModeButton = $('btn-castle-mode');
   const castleHint = $('castle-hint');
-  const CASTLE_HINT_IDLE = 'Choose the castle button, then pick a flat 2\u00d72 site.';
+  const CASTLE_HINT_IDLE = 'Castles require a flat 2\u00d72 area';
   const CASTLE_HINT_ARMED = 'Tap a flat 2\u00d72 of open ground, then confirm.';
 
   castleModeButton.onclick = () => {
@@ -483,6 +483,9 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   function refreshPanels() {
     const building = world.phase === PHASE.BUILD;
     const siting = world.phase === PHASE.CASTLE;
+    // On level one the castle prompt is hidden until the hero reaches tier 2,
+    // giving the player time to walk up the staircase first.
+    const castleReady = siting && world.hero.tier >= 2;
     // Nothing is shown during the arrival: no build bar, no castle prompt, no
     // incoming-wave badges. It is a shot, not a screen.
     const cutscene = world.phase === PHASE.INTRO;
@@ -498,12 +501,12 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     // knowing which shore the first wave lands on is exactly the information
     // that decision wants.
     previewBox.style.display = building && !!world.structures.theCastle() && !cutscene ? 'flex' : 'none';
-    bottom.style.display = building || siting ? 'flex' : 'none';
+    bottom.style.display = building || castleReady ? 'flex' : 'none';
     // The build bar stays up while a tower menu is open: the menu floats over
     // the island rather than competing for the bottom strip, so there is no
     // longer a reason to take the bar away.
     buildPanel.style.display = building && !placingNow ? 'flex' : 'none';
-    castlePrompt.style.display = siting && !placingNow ? 'flex' : 'none';
+    castlePrompt.style.display = castleReady && !placingNow ? 'flex' : 'none';
     cancelPanel.style.display = placingNow ? 'flex' : 'none';
     const nextBottomPanel = buildPanel.style.display !== 'none' ? buildPanel
       : castlePrompt.style.display !== 'none' ? castlePrompt
@@ -712,6 +715,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   const stats = $('dev-stats');
   let since = 0;
   let lastPhase = null;
+  let lastHeroTier = null;
 
   const buildPanel = $('build-panel');
   const bottom = $('bottom');
@@ -757,6 +761,12 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     dispose() { for (const undo of teardown) undo(); },
 
     update(elapsed) {
+      // On level one, re-check panels when the hero crosses the tier-2
+      // threshold so the castle prompt appears exactly when they arrive.
+      if (world.phase === PHASE.CASTLE && world.hero.tier !== lastHeroTier) {
+        lastHeroTier = world.hero.tier;
+        refreshPanels();
+      }
       // Phase-dependent controls. TDD 7: zero tower interaction during combat.
       if (world.phase !== lastPhase) {
         lastPhase = world.phase;

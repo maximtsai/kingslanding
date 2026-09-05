@@ -65,7 +65,10 @@ export function buildScene(THREE, scene, board, seed) {
   // and towers from on demand.
   const prefabs = buildStructures(ctx);
   buildNature(ctx);
-  buildDecor(ctx);
+  // Decor that can hide the king (the banner) is built as standalone meshes in
+  // the static root and returned here, so the views' occlusion pass can fade it
+  // like any building -- see decor.js.
+  const decorScenery = buildDecor(ctx) || [];
 
   // Freeze the scenery. Nothing added after this point may be batched.
   batchStatic(THREE, props);
@@ -81,7 +84,7 @@ export function buildScene(THREE, scene, board, seed) {
     skyMaterial: water.skyMaterial,
     // Tall props that are not gameplay objects but still hide people behind
     // them, so section 15's occlusion rule has to reach them too.
-    scenery: prefabs.scenery || [],
+    scenery: [...(prefabs.scenery || []), ...decorScenery],
     gridMesh: terrain.gridMesh
   };
 }

@@ -33,7 +33,7 @@ import { createUnitView } from './render/units.js';
 import { createPicker } from './render/picking.js';
 import {
   createStructureView, createBoatView, createProjectileView,
-  createHeroView, createGhostView, createCoinView
+  createHeroView, createGhostView, createCoinView, createGuideView
 } from './render/views.js';
 import { attachGestures } from './input/gestures.js';
 import { muzzleHeight } from './sim/los.js';
@@ -111,6 +111,8 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   const heroView = createHeroView(THREE, board, scene.soft, scene.kingRig, scene.dynamicRoot);
   const coinView = createCoinView(THREE, board, scene.dynamicRoot);
   const ghost = createGhostView(THREE, board, scene.dynamicRoot);
+  const guide = createGuideView(THREE, board, scene.dynamicRoot);
+  const guideLabel = document.getElementById('guide-click-here');
 
   // The only consumer of world.events. Built after the views because it drives
   // them: a hit reaction is a thing the renderer does about something the
@@ -269,6 +271,43 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       projectileView.sync(world, blend);
       coinView.sync(world, blend);
       heroView.sync(world, blend, elapsed);
+
+      // On level one, show a guide arrow pointing to the tier-2 tile behind
+      // the nearest staircase until the hero reaches it.
+      if (levelId === 'one' && world.phase === PHASE.CASTLE && world.hero.tier < 2) {
+        // Landing tile from the level data.
+        const landI = 3, landJ = 7;
+        // Find the ramp whose low end is closest to the landing.
+        let best = null, bestD = Infinity;
+        for (const [[li, lj], [hi, hj]] of board.level.ramps) {
+          const d = Math.hypot(li - landI, lj - landJ);
+          if (d < bestD) { bestD = d; best = [[li, lj], [hi, hj]]; }
+        }
+        if (best) {
+          const [, [hi, hj]] = best;
+          // First tier-2 neighbour of the ramp high end that is not the low end.
+          const [li, lj] = best[0];
+          const nbs = [[hi-1,hj],[hi+1,hj],[hi,hj-1],[hi,hj+1]];
+          const t = nbs.find(([ni,nj]) => board.at(ni,nj) >= 2 && (ni!==li || nj!==lj));
+          if (t) guide.show(t[0] - 1, t[1]);
+        }
+      } else {
+        guide.hide();
+      }
+      guide.sync(elapsed);
+      const guideTarget = guide.target;
+      if (guideTarget) {
+        const guidePoint = view.screenPositionOf(
+          guideTarget.i,
+          guideTarget.j,
+          board.topY(guideTarget.i, guideTarget.j) - config.board.SINK + 0.72
+        );
+        guideLabel.style.display = 'block';
+        guideLabel.style.left = `${guidePoint.x.toFixed(1)}px`;
+        guideLabel.style.top = `${guidePoint.y.toFixed(1)}px`;
+      } else {
+        guideLabel.style.display = 'none';
+      }
 
       updateGhost();
       view.draw();

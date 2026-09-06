@@ -153,6 +153,17 @@ export function createStructures(board, flow) {
     }, spec.footprint);
   }
 
+  // Training dummies: static targets for the hero to practice on before
+  // the first wave. Low HP, no attacks, destroyed on death.
+  function trainingDummy(i, j) {
+    return add({
+      id: nextId++, kind: 'trainingDummy', type: 'trainingDummy',
+      i, j, hp: 25, maxHp: 25, alive: true,
+      rotation: 0, tier: 1, invested: 0,
+      cooldown: 0, target: null, building: 0
+    });
+  }
+
   // Placement predicates answer WHY, not just yes/no: the HUD turns the code
   // into a brief on-screen reason ("CAN'T PLACE ON CLIFF"). null means the spot
   // is legal. Codes are sim vocabulary; screen text belongs to the presentation.
@@ -214,7 +225,7 @@ export function createStructures(board, flow) {
   return {
     list,
     at: (i, j) => (i < 0 || j < 0 || i >= N || j >= N) ? null : occupant[index(i, j)],
-    house, tower, castle, upgrade, destroy, sell, cells, edgeDistance,
+    house, tower, castle, trainingDummy, upgrade, destroy, sell, cells, edgeDistance,
     canPlaceCastle, canPlaceCastleReason: castleReason,
 
     // TDD 7: placement only where the tile is land and unoccupied. Never ramps,
@@ -244,6 +255,12 @@ export function createStructures(board, flow) {
     // trap and nobody would do it.
     repairAll() {
       for (const s of list) {
+        // Training dummies are one-shot props: destroyed is destroyed. The free
+        // repair exists so the player does not lose towers between waves, and
+        // standing the practice targets back up at the top of every build phase
+        // would put two of them in the middle of the island for the rest of the
+        // level -- including the one the player just cleared to earn the castle.
+        if (s.kind === 'trainingDummy') continue;
         s.hp = s.maxHp;
         // Only reclaim the tile if nothing has taken it in the meantime. Repair
         // runs at the top of the build phase, before the player can build, so

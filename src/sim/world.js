@@ -101,6 +101,13 @@ export function createWorld(board) {
     if (board.isLand(i, j)) structures.house(i, j);
   }
 
+  // Level 1 training dummies: static targets for the hero to practice on.
+  // Placed on tier-2 tiles on opposite sides of the plateau.
+  if (board.level.id === 'one') {
+    structures.trainingDummy(3, 2);
+    structures.trainingDummy(4, 4);
+  }
+
   // ---- enemies ----
   // Spawning, targeting and per-unit behaviour live in enemies.js. What stays
   // here is only what the rest of the world needs to reach: damage resolution,
@@ -413,6 +420,11 @@ export function createWorld(board) {
       }
       heroControl.step(dt, combat);
       separation.resolveHero(world.hero);
+      // He can shoot outside a wave -- the level-one training dummies exist for
+      // exactly that -- so the projectiles he releases have to fly. Without this
+      // every arrow loosed during BUILD or CASTLE sat frozen at the muzzle at
+      // t=0, which is what "arrows stuck in mid-air" was.
+      combat.step(dt);
       // The end-of-wave sweep is already paid; this only flies the coins home so
       // the player sees it happen.
       coins.step(dt);

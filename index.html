@@ -244,6 +244,34 @@
     65% { opacity: 1; transform: scale(1.12) translateY(4px); }
     to { opacity: 1; transform: scale(1) translateY(0); }
   }
+  /* Level one briefly teaches that the edge badges point toward the incoming
+     shore: the first badge travels from its projected water position to the
+     screen edge instead of simply appearing there. */
+  .threat.tutorial-arrival {
+    animation: threat-arrival-from-water .9s cubic-bezier(.2,1.25,.35,1) both;
+  }
+  @keyframes threat-arrival-from-water {
+    from {
+      opacity: 0; transform: translate(var(--threat-from-x), var(--threat-from-y)) scale(.42);
+    }
+    72% {
+      opacity: 1; transform: translate(0, 0) scale(1.08);
+    }
+    to { opacity: 1; transform: translate(0, 0) scale(1); }
+  }
+  #incoming-tutorial-label {
+    display: none; position: absolute; z-index: 9; pointer-events: none;
+    padding: 5px 10px; border-radius: 999px;
+    background: rgba(18,28,33,.88); border: 2px solid rgba(242,193,78,.86);
+    color: #f6f7f3; font-size: 16px; font-weight: 900; letter-spacing: .1em;
+    transform: translate(-50%, 0); white-space: nowrap;
+    text-shadow: 0 2px 5px rgba(0,0,0,.7);
+  }
+  #incoming-tutorial-label.show { display: block; animation: incoming-label-pop .35s ease-out both; }
+  @keyframes incoming-label-pop {
+    from { opacity: 0; transform: translate(-50%, 5px) scale(.8); }
+    to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
   /* Fills the badge, so rotating it swings the triangle around the centre. */
   .threat-arrow { position: absolute; inset: 0; transform: rotate(0deg); }
   .threat-arrow::before {
@@ -291,6 +319,34 @@
     font-size: 21px; font-weight: 900; letter-spacing: .08em;
     box-shadow: 0 4px 12px rgba(0,0,0,.35);
     pointer-events: none;
+  }
+
+  /* One-shot tutorial lesson, top-centre under the phase badge. */
+  #tutorial-callout {
+    top: 138px; left: 0; right: 0; margin: 0 auto;
+    width: max-content; max-width: 560px; text-align: center;
+    padding: 14px 26px; border-radius: 999px;
+    background: #162228; border: 3px solid var(--gold);
+    color: #f6f7f3; font-size: 27px; font-weight: 900; letter-spacing: .06em;
+    box-shadow: 0 6px 18px rgba(8,16,19,.45);
+    pointer-events: none; z-index: 9;
+  }
+  #tutorial-callout.show { animation: callout-pop 3.6s ease both; }
+  @keyframes callout-pop {
+    0% { opacity: 0; transform: translateY(-14px) scale(.92); }
+    8% { opacity: 1; transform: translateY(0) scale(1); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+
+  /* While the level-one defense tutorial is active, the archer button pulses
+     gold to point at the recommended first purchase. */
+  .tower-button.tutorial-pulse {
+    animation: btn-tutorial-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes btn-tutorial-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(242,193,78,.0); }
+    50% { box-shadow: 0 0 0 9px rgba(242,193,78,.55); }
   }
 
   #tower-radial { left: 0; top: 0; display: none; }
@@ -511,11 +567,18 @@
   </div>
 
   <div class="hud" id="wave-preview"></div>
+  <div class="hud" id="incoming-tutorial-label" aria-live="polite">NEXT ATTACK</div>
   <div id="wave-start-title" aria-live="polite"></div>
 
   <!-- Anchored to the structure, positioned every frame from hud.js. Scaling
-       happens on this element, so the seats scale with it as one piece. -->
+       happens on this element, so the seats scale with it as one piece.
+       Reused as the level-one tutorial hint ("BUILD DEFENSE") above the
+       recommended archer tile -- same bubble, same anchoring. -->
   <div class="hud" id="guide-click-here">CLICK HERE</div>
+
+  <!-- One-shot tutorial callout. Shows the house-income lesson once, after
+       the first wave clears; see hud.js. Hidden until then. -->
+  <div class="hud" id="tutorial-callout" role="status" aria-live="polite" style="display:none"></div>
 
   <div class="hud" id="tower-radial">
     <div class="radial-ring"></div>

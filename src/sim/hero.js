@@ -521,7 +521,20 @@ export function createHero(world, flowHero) {
       return;
     }
 
+    // Also target training dummies if no other targets exist
     if (!hero.target) hero.target = combat.acquire(muzzle, H);
+    if (!hero.target) {
+      // Check training dummies
+      let bestDummy = null, bestDummyD = Infinity;
+      for (const s of world.structures.list) {
+        if (!s.alive || s.kind !== 'trainingDummy') continue;
+        const d = Math.hypot(s.x - hero.x, s.z - hero.z);
+        if (d >= bestDummyD) continue;
+        if (d > H.range) continue;
+        bestDummy = s; bestDummyD = d;
+      }
+      if (bestDummy) hero.target = bestDummy;
+    }
     if (hero.target) {
       if (!hero.moving) {
         hero.facing = lerpAngle(hero.facing,

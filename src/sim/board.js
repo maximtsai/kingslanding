@@ -32,7 +32,7 @@ export function createBoard(level, metrics) {
 
   // Out of bounds reads as water, so edge cases at the island's rim need no
   // special-casing anywhere downstream.
-  const at = (i, j) => (i < 0 || j < 0 || i >= N || j >= N) ? 0 : h[j][i];
+  const at = (i, j) => { i = Math.round(i); j = Math.round(j); return (i < 0 || j < 0 || i >= N || j >= N) ? 0 : h[j][i]; };
 
   // ---- ramps ----
   // Keyed both ways: passability asks "can I step from a to b" without caring

@@ -589,6 +589,73 @@ export function createStructurePrefabs(ctx) {
     return g;
   }
 
+  // A pell, which is what a training yard actually stands up: a stake driven
+  // into the ground, a straw body lashed to it with rope, and a crossbar for
+  // arms. Read from the game camera it is unmistakably a person-shaped thing
+  // made of wood and straw -- the post-with-a-hoop it replaced read as a
+  // signpost.
+  //
+  // Deliberately SHORTER than the king. It is a practice prop standing in his
+  // yard, and one that overtopped him read as a scarecrow guarding the island.
+  function trainingDummy() {
+    const g = new THREE.Group();
+    const timber = 0x5b4026;      // dark, weathered stake
+    const straw = 0xd6b263;       // bright bound straw, so the body reads apart
+    const rope = 0x6f4c28;
+
+    // Two crossed skids it is pegged onto. A yard pell stands on a foot, and a
+    // small one keeps the footprint clear so the round contact shadow still
+    // shows rather than being covered by a mound of geometry.
+    [0, Math.PI / 2].forEach(angle => {
+      const skid = bevelBox(0.28, 0.06, 0.045, 0, timber);
+      skid.rotation.y = angle;
+      g.add(skid);
+    });
+
+    // The stake. Tapered, so it reads as split timber rather than dowel.
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.06, 0.53, 6), mat(timber));
+    post.position.y = 0.275;
+    g.add(post);
+
+    // Arms: one crossbar through the shoulders, with straw-wrapped ends. Three
+    // pieces, and they are what turn a post into a figure.
+    const bar = bevelBox(0.48, 0.05, 0.05, 0, timber);
+    bar.position.y = 0.425;
+    g.add(bar);
+    [-1, 1].forEach(side => {
+      const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.04, 0.095, 6), mat(straw));
+      wrap.rotation.z = Math.PI / 2;
+      wrap.position.set(side * 0.198, 0.45, 0);
+      g.add(wrap);
+    });
+
+    // Torso: a straw bundle, wider at the shoulders than at the waist.
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.122, 0.098, 0.24, 7), mat(straw));
+    torso.position.y = 0.385;
+    g.add(torso);
+
+    // The two rope bands holding the bundle on. Without them the torso is just a
+    // fat section of post; with them it is obviously tied-on straw.
+    [[0.32, 0.105], [0.46, 0.118]].forEach(([y, radius]) => {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.014, 4, 10), mat(rope));
+      band.rotation.x = Math.PI / 2;
+      band.position.y = y;
+      g.add(band);
+    });
+
+    // Head: a small sack of straw over the top of the stake, with a bare stretch
+    // of post below it doing the work of a neck.
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.074, 0.11, 6), mat(straw));
+    head.position.y = 0.585;
+    g.add(head);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.013, 4, 10), mat(rope));
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = 0.535;
+    g.add(collar);
+
+    return g;
+  }
+
   // One entry per tower type. The renderer asks for a type and gets a silhouette
   // that already encodes what the thing does.
   const TOWER_SHAPES = {
@@ -603,7 +670,8 @@ export function createStructurePrefabs(ctx) {
     bulwark:      () => wall({ width: 1.15, height: 0.62 }),
     spearBunker:  () => wall({ width: 1.0, height: 0.5, slits: true }),
     spikes:       () => wall({ width: 1.15, height: 0.62, spikes: true }),
-    catapult:     () => wall({ width: 1.0, height: 0.34, arm: true })
+    catapult:     () => wall({ width: 1.0, height: 0.34, arm: true }),
+    trainingDummy: trainingDummy
   };
 
   const towerOfType = type => (TOWER_SHAPES[type] || TOWER_SHAPES.archer)();

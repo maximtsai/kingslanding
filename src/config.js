@@ -549,8 +549,13 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
       pickupRadius: 0.55,
       magnetRadius: 1.6,       // starts drifting toward him before he is on it
       magnetSpeed: 5.0,
-      flySpeed: 14,            // the auto-collect sweep at end of wave
-      scatter: 0.28            // how far a coin bounces from the body
+      // The auto-collect sweep at end of wave. Halved from 14: at that speed the
+      // coins were home before the player's eye had found them, which defeats
+      // the only job the flight has -- TDD 12 credits the gold immediately and
+      // flies the coin purely so the payout is SEEN.
+      flySpeed: 7,
+      scatter: 0.28,            // how far a coin bounces from the body
+      hopHeight: 0.34           // vertical lift above the ground when dropped
     }
   },
 
@@ -588,6 +593,21 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     shakeRate: 46,      // Hz
     shakeTilt: 0.10,    // rad
     dustPuffs: 12
+  },
+
+  // ---- training dummy death ----
+  // Not a demolition. A pell is a stake in the dirt, so it does not blow apart
+  // in a ring of dust -- it tips over on its own foot, lies there a beat, and
+  // the ground takes it. Same two-stage read as a building coming down, told
+  // with weight instead of with a blast.
+  dummyDeath: {
+    fall: 0.52,        // s from upright to flat, accelerating like a falling post
+    settle: 0.20,      // s lying still before the ground starts taking it
+    sink: 0.55,        // s from flat to gone
+    depth: 0.75,       // world units it drops -- past its own thickness, then some
+    rebound: 0.13,     // rad it rocks back after slamming down. Dead weight, not a hinge
+    reboundRate: 21,   // rad/s of that rocking...
+    reboundDecay: 11   // ...and how fast it dies away
   },
 
   // ---- damage as fire (TDD 15) ----

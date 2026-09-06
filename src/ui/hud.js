@@ -17,7 +17,7 @@ import { config } from '../config.js';
 import { PHASE } from '../sim/world.js';
 
 export function createHud({ stage, view, world, loop, audio, feedback, gridMesh, unitView,
-                            onReady, onSelectTower, onNextLevel, hasNextLevel }) {
+                            onReady, onSelectTower, onNextLevel, hasNextLevel, levelId }) {
   const $ = id => document.getElementById(id);
 
   // Everything this HUD attached to something it does not own. A level change
@@ -99,6 +99,64 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // Only tier-1 entries appear on the bar; everything deeper is reached by
   // upgrading something already standing (TDD 7).
   const buildButtons = [...document.querySelectorAll('[data-build]')];
+  // querySelector, not $: these are matched by attribute, and $ is
+  // getElementById. Passing a selector to it returns null silently, which took
+  // the barricade hold and the archer pulse out of the tutorial without a word.
+  const archerButton = document.querySelector('[data-build="archer"]');
+  const barricadeButton = document.querySelector('[data-build="barricade"]');
+
+  // ---- level-one onboarding ----
+  // Suggestion 3: after the castle is placed, guide the first archer tower.
+  // Suggestion 4: after the first wave, the one-time house-income lesson.
+  // Barricades stay hidden through the first wave so the player learns one
+  // building at a time.
+  const L1 = levelId === 'one';
+  const defenseTutorialActive = () => L1 && world.phase === PHASE.BUILD &&
+    !didBuildFirstTower && !world.structures.towers().length;
+  // Check if all training dummies are destroyed (level 1 only).
+  const allDummiesDestroyed = () => {
+    if (!L1) return true;
+    const dummies = world.structures.list.filter(s => s.kind === 'trainingDummy');
+    return dummies.length === 0 || dummies.every(s => !s.alive);
+  };
+  let didBuildFirstTower = false;
+  let calloutShowAt = Infinity;
+  let calloutHideAt = Infinity;
+  const CALL_DELAY = 0.55;      // beat before a lesson, and between two of them
+  const CALL_SHOW = 3.4;        // how long the lesson stays up (matches the CSS)
+  const tutorialCallout = $('tutorial-callout');
+
+  // One-shot lessons SHARE the single callout bubble, so they have to take
+  // turns. Build phase two used to fire three things into the same second --
+  // measured: the house-income bubble and the NEXT ATTACK badge overlapped for
+  // 1.2s, with the barricade button appearing under both -- and three messages
+  // at once is the same as none. Queue them; the pump in update() plays one at
+  // a time and waits for the badge lesson to finish first.
+  const calloutQueue = [];
+  let calloutPending = null;    // the entry whose show timer is running
+  // The barricade is withheld through wave one so the first build phase teaches
+  // ONE building. It stays withheld until its own announcement plays, so the
+  // button and the sentence explaining it arrive together.
+  let barricadeHeld = true;
+
+  const queueCallout = (text, onShow) => calloutQueue.push({ text, onShow });
+
+  // Nothing may be left stranded behind a lesson that never got its turn: if
+  // the player presses READY straight away, the queue is emptied and every
+  // side effect runs anyway. Otherwise a quick starter would lose barricades
+  // for the rest of the level.
+  function flushCallouts() {
+    if (!calloutPending && !calloutQueue.length &&
+        calloutShowAt === Infinity && calloutHideAt === Infinity) return;
+    if (calloutPending) { calloutPending.onShow?.(); calloutPending = null; }
+    while (calloutQueue.length) calloutQueue.shift().onShow?.();
+    calloutShowAt = Infinity;
+    calloutHideAt = Infinity;
+    if (tutorialCallout) {
+      tutorialCallout.style.display = 'none';
+      tutorialCallout.classList.remove('show');
+    }
+  }
 
   // ---- PICK, PLACE, CONFIRM (TDD 16) ----
   //
@@ -340,6 +398,8 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     const type = pending.type;
     if (world.gold < config.towers[type].cost) { feedback.denied(); return; }
     if (!world.build(type, pending.i, pending.j)) { feedback.denied(); return; }
+    // First build on level one ends the "build defense" tutorial.
+    didBuildFirstTower = true;
     feedback.tap();
     clearPending();
     // Disarm after every confirmed build so the bottom bar returns to the
@@ -495,9 +555,10 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   function refreshPanels() {
     const building = world.phase === PHASE.BUILD;
     const siting = world.phase === PHASE.CASTLE;
-    // On level one the castle prompt is hidden until the hero reaches tier 2,
-    // giving the player time to walk up the staircase first.
-    const castleReady = siting && world.hero.tier >= 2;
+    // On level one the castle prompt is hidden until the hero reaches tier 2
+    // AND all training dummies are destroyed, giving the player time to walk
+    // up the staircase and practice attacking first.
+    const castleReady = siting && world.hero.tier >= 2 && allDummiesDestroyed();
     // Nothing is shown during the arrival: no build bar, no castle prompt, no
     // incoming-wave badges. It is a shot, not a screen.
     const cutscene = world.phase === PHASE.INTRO;
@@ -520,6 +581,11 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     buildPanel.style.display = building && !placingNow ? 'flex' : 'none';
     castlePrompt.style.display = castleReady && !placingNow ? 'flex' : 'none';
     cancelPanel.style.display = placingNow ? 'flex' : 'none';
+    // On level one the barricade is withheld until the second wave: the first
+    // build phase teaches ONE building. Hide the button rather than removing
+    // it, so the other two slots stretch and the layout does not jump.
+    const holdBarricade = L1 && building && (world.waveIndex === 0 || barricadeHeld);
+    if (barricadeButton) barricadeButton.style.display = holdBarricade ? 'none' : 'flex';
     const nextBottomPanel = buildPanel.style.display !== 'none' ? buildPanel
       : castlePrompt.style.display !== 'none' ? castlePrompt
       : cancelPanel.style.display !== 'none' ? cancelPanel : null;
@@ -542,7 +608,12 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
   // ---- failure recovery (TDD 13) ----
   $('btn-restart-wave').onclick = click(() => { inspecting = null; world.restartWave(); });
-  $('btn-restart-level').onclick = click(() => { inspecting = null; world.restartLevel(); });
+  $('btn-restart-level').onclick = click(() => {
+    inspecting = null;
+    if (L1) resetTutorials();
+    waveStartSerial = -1;
+    world.restartLevel();
+  });
   const nextButton = $('btn-next-level');
   nextButton.onclick = click(() => onNextLevel());
 
@@ -574,6 +645,46 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   let waveStartSerial = -1;
   const threats = [];               // live badge elements, with their bearings
   let previewSignature = '';
+  let incomingTutorialPending = false;
+  let incomingTutorialPlaying = false;
+  let incomingTutorialSeen = false;
+  let incomingTutorialAge = 0;
+  let houseIncomeTutorialSeen = false;
+  const incomingTutorialLabel = $('incoming-tutorial-label');
+
+  function stopIncomingTutorial() {
+    incomingTutorialPending = false;
+    incomingTutorialPlaying = false;
+    if (incomingTutorialLabel) {
+      incomingTutorialLabel.classList.remove('show');
+      // Clear the inline value rather than writing `none`. This runs every frame
+      // outside the build phase, so an inline `display:none` was already on the
+      // element long before the lesson could fire -- and it outranks the
+      // `.show { display: block }` class rule, which is why the caption never
+      // appeared even though the badge's fly-in animation played fine.
+      incomingTutorialLabel.style.display = '';
+    }
+  }
+
+  function resetTutorials() {
+    didBuildFirstTower = false;
+    houseIncomeTutorialSeen = false;
+    calloutQueue.length = 0;
+    calloutPending = null;
+    barricadeHeld = true;
+    calloutShowAt = Infinity;
+    calloutHideAt = Infinity;
+    if (tutorialCallout) {
+      tutorialCallout.style.display = 'none';
+      tutorialCallout.classList.remove('show');
+    }
+    incomingTutorialSeen = false;
+    incomingTutorialAge = 0;
+    stopIncomingTutorial();
+    previewSignature = '';
+    threats.length = 0;
+    previewBox.textContent = '';
+  }
 
   function buildPreview() {
     const preview = world.wavePreview || [];
@@ -637,6 +748,33 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   const HALF = 40;                      // half the badge, so it centres on the edge
   const FAN = 88;                       // spacing when one landing needs two badges
   const MIN_GAP = 86;                   // and the floor between any two badges
+
+  function startIncomingTutorial() {
+    if (!L1 || incomingTutorialSeen || !threats.length) return;
+    const threat = threats[0];
+    if (threat.x === undefined || threat.y === undefined) return;
+
+    // The badge is positioned on the inset screen edge by aimPreview(). Animate
+    // from the projected water position to that final position, making the
+    // direction it reports visible before the badge settles at the edge.
+    const from = view.screenPositionOf(threat.spawn.x, threat.spawn.z);
+    threat.el.style.setProperty('--threat-from-x', `${(from.x - threat.x).toFixed(1)}px`);
+    threat.el.style.setProperty('--threat-from-y', `${(from.y - threat.y).toFixed(1)}px`);
+    threat.el.classList.remove('tutorial-arrival');
+    void threat.el.offsetWidth;
+    threat.el.classList.add('tutorial-arrival');
+
+    if (incomingTutorialLabel) {
+      incomingTutorialLabel.style.left = `${threat.x.toFixed(1)}px`;
+      incomingTutorialLabel.style.top = `${Math.min(1080, Math.max(250, threat.y + 84)).toFixed(1)}px`;
+      incomingTutorialLabel.classList.remove('show');
+      void incomingTutorialLabel.offsetWidth;
+      incomingTutorialLabel.classList.add('show');
+    }
+    incomingTutorialSeen = true;
+    incomingTutorialPlaying = true;
+    incomingTutorialAge = 0;
+  }
 
   function aimPreview() {
     // Rays start at the king, because the camera now centres on him -- so the
@@ -729,6 +867,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   let since = 0;
   let lastPhase = null;
   let lastHeroTier = null;
+  let lastDummiesClear = null;
 
   const buildPanel = $('build-panel');
   const bottom = $('bottom');
@@ -755,6 +894,21 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     // True while a placement is armed, so main knows a tap on the ground is a
     // proposal rather than a move order.
     get arming() { return arming(); },
+    get castleArming() { return castleArming; },
+    // True during the one-time level-one incoming-wave lesson. Main uses this
+    // to pulse the matching shoreline with the existing world marker.
+    get incomingTutorial() { return incomingTutorialPlaying; },
+    // True while the level-one "build your first defense" tutorial is up.
+    // Read by main to place the guide marker on the recommended archer tile.
+    get defenseTutorial() { return defenseTutorialActive(); },
+    // True on level one once the king is up on the plateau but the practice
+    // targets are still standing. That is the one stretch of the opening with
+    // nothing on screen at all -- the stairs marker has switched off and the
+    // castle prompt has not switched on. Read by the guide updater.
+    get dummyTutorial() {
+      return L1 && world.phase === PHASE.CASTLE && world.hero.tier >= 2 &&
+             !allDummiesDestroyed();
+    },
     // The cursor footprint before any tap has been made, or null.
     get hovered() { return hovered; },
 
@@ -771,18 +925,47 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
       return !!inspecting;
     },
 
-    dispose() { for (const undo of teardown) undo(); },
+    dispose() {
+      stopIncomingTutorial();
+      if (tutorialCallout) tutorialCallout.style.display = 'none';
+      for (const undo of teardown) undo();
+    },
 
     update(elapsed) {
-      // On level one, re-check panels when the hero crosses the tier-2
-      // threshold so the castle prompt appears exactly when they arrive.
-      if (world.phase === PHASE.CASTLE && world.hero.tier !== lastHeroTier) {
+      // On level one, re-check panels when either half of the castle gate
+      // moves. Watching only the tier was a bug: the dummies stand ON tier 2,
+      // so the tier change always lands FIRST and the last dummy dying -- the
+      // thing that actually unlocks the prompt -- went unnoticed until some
+      // other event happened to refresh the panels.
+      const dummiesClear = allDummiesDestroyed();
+      if (world.phase === PHASE.CASTLE &&
+          (world.hero.tier !== lastHeroTier || dummiesClear !== lastDummiesClear)) {
         lastHeroTier = world.hero.tier;
+        lastDummiesClear = dummiesClear;
         refreshPanels();
       }
       // Phase-dependent controls. TDD 7: zero tower interaction during combat.
       if (world.phase !== lastPhase) {
         lastPhase = world.phase;
+        // Suggestion 4: the first time a wave clears, gold arrives from the
+        // houses -- say what just happened, once, without any text during the
+        // fight itself.
+        if (L1 && world.phase === PHASE.BUILD && world.waveIndex === 1 &&
+            tutorialCallout && !houseIncomeTutorialSeen) {
+          houseIncomeTutorialSeen = true;
+          // Order matters and is the whole point: the badge lesson plays first
+          // (it is about the wave that is coming), then what the wave just
+          // paid, then the new thing they can spend it on.
+          queueCallout(`HOUSES EARN GOLD +${config.economy.houseIncome}`);
+          queueCallout('BARRICADES BLOCK THE PATH', () => {
+            barricadeHeld = false;
+            refreshPanels();
+          });
+        }
+        if (L1 && world.phase === PHASE.BUILD && world.waveIndex === 1 &&
+            !incomingTutorialSeen) {
+          incomingTutorialPending = true;
+        }
         if (world.phase === PHASE.WAVE && world.waveIndex !== waveStartSerial) {
           waveStartSerial = world.waveIndex;
           waveStartTitle.textContent = `WAVE ${world.waveIndex + 1}`;
@@ -824,6 +1007,58 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
       stepRadial(elapsed);
 
+      // Take the next queued lesson only when the bubble is free AND the badge
+      // lesson is done with the screen. That ordering is what stops build phase
+      // two from talking over itself.
+      // calloutHideAt is the "bubble is still on screen" test, and it is
+      // load-bearing: without it the next entry is taken the instant the
+      // previous one is SHOWN, which blanks the message that was mid-display.
+      if (!calloutPending && calloutHideAt === Infinity && calloutQueue.length &&
+          world.phase === PHASE.BUILD &&
+          !incomingTutorialPlaying && !incomingTutorialPending) {
+        calloutPending = calloutQueue.shift();
+        calloutShowAt = world.time + CALL_DELAY;
+        calloutHideAt = Infinity;
+        if (tutorialCallout) {
+          tutorialCallout.style.display = 'none';
+          tutorialCallout.classList.remove('show');
+        }
+      }
+
+      // The one-shot lesson has separate show and hide deadlines. This keeps its
+      // short post-wave delay real instead of starting the CSS animation early.
+      if (calloutShowAt !== Infinity && world.time >= calloutShowAt) {
+        calloutShowAt = Infinity;
+        calloutHideAt = world.time + CALL_SHOW;
+        if (calloutPending) {
+          calloutPending.onShow?.();
+          if (tutorialCallout) tutorialCallout.textContent = calloutPending.text;
+          calloutPending = null;
+        }
+        if (tutorialCallout && world.phase === PHASE.BUILD) {
+          tutorialCallout.style.display = 'block';
+          tutorialCallout.classList.remove('show');
+          void tutorialCallout.offsetWidth;
+          tutorialCallout.classList.add('show');
+        }
+      }
+      if (calloutHideAt !== Infinity && world.time >= calloutHideAt) {
+        calloutHideAt = Infinity;
+        if (tutorialCallout) {
+          tutorialCallout.style.display = 'none';
+          tutorialCallout.classList.remove('show');
+        }
+      }
+
+      // While the level-one defense tutorial is up, the archer button pulses.
+      if (L1 && archerButton) {
+        archerButton.classList.toggle('tutorial-pulse', defenseTutorialActive());
+      }
+
+      // If the player starts the wave or leaves level one, no tutorial overlay
+      // should remain over combat. The one-shot flags stay consumed for this HUD.
+      if (world.phase !== PHASE.BUILD) { stopIncomingTutorial(); flushCallouts(); }
+
       // The confirm button is anchored to a tile, not to the screen, so it has
       // to be re-projected every frame -- the camera follows the king and can
       // be rotated and zoomed while a placement is still pending.
@@ -835,6 +1070,29 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
       previewBox.style.display = showPreview ? 'flex' : 'none';
       buildPreview();
       if (threats.length) aimPreview();
+      if (incomingTutorialPending) {
+        if (threats.length) {
+          incomingTutorialPending = false;
+          startIncomingTutorial();
+        }
+      }
+      if (incomingTutorialPlaying && incomingTutorialLabel) {
+        const activeThreat = threats[0];
+        if (activeThreat && activeThreat.x !== undefined) {
+          incomingTutorialLabel.style.left = `${activeThreat.x.toFixed(1)}px`;
+          incomingTutorialLabel.style.top = `${Math.min(1080, Math.max(250, activeThreat.y + 84)).toFixed(1)}px`;
+        }
+      }
+      if (incomingTutorialPlaying) {
+        incomingTutorialAge += elapsed;
+        if (incomingTutorialAge >= 1.8) {
+          incomingTutorialPlaying = false;
+          if (incomingTutorialLabel) {
+            incomingTutorialLabel.classList.remove('show');
+            incomingTutorialLabel.style.display = '';
+          }
+        }
+      } 
 
       if (world.gold !== lastGold) {
         lastGold = world.gold;

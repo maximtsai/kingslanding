@@ -40,6 +40,7 @@ import { muzzleHeight } from './sim/los.js';
 import { createHud } from './ui/hud.js';
 import { createAudio } from './audio.js';
 import { createFeedback } from './feedback.js';
+import { updateGuide, updateGuideLabel } from './render/guide-updater.js';
 
 const SEED = 4471;                    // the diorama's seed; keeps the island identical
 
@@ -274,44 +275,12 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       structureView.sync(world, view.camera, elapsed, hud.inspectingId);
       projectileView.sync(world, blend);
       coinView.sync(world, blend);
-      heroView.sync(world, blend, elapsed);
+      heroView.sync(world, blend, elapsed, view.camera);
 
-      // On level one, show a guide arrow pointing to the tier-2 tile behind
-      // the nearest staircase until the hero reaches it.
-      if (levelId === 'one' && world.phase === PHASE.CASTLE && world.hero.tier < 2) {
-        // Landing tile from the level data.
-        const landI = 3, landJ = 7;
-        // Find the ramp whose low end is closest to the landing.
-        let best = null, bestD = Infinity;
-        for (const [[li, lj], [hi, hj]] of board.level.ramps) {
-          const d = Math.hypot(li - landI, lj - landJ);
-          if (d < bestD) { bestD = d; best = [[li, lj], [hi, hj]]; }
-        }
-        if (best) {
-          const [, [hi, hj]] = best;
-          // First tier-2 neighbour of the ramp high end that is not the low end.
-          const [li, lj] = best[0];
-          const nbs = [[hi-1,hj],[hi+1,hj],[hi,hj-1],[hi,hj+1]];
-          const t = nbs.find(([ni,nj]) => board.at(ni,nj) >= 2 && (ni!==li || nj!==lj));
-          if (t) guide.show(t[0] - 1, t[1]);
-        }
-      } else {
-        guide.hide();
-      }
+      // Level-one onboarding guides (extracted from main).
+      updateGuide({ levelId, world, hud, board, guide, view });
       guide.sync(elapsed);
-      const guideTarget = guide.target;
-      if (guideTarget) {
-        const guidePoint = view.screenPositionOf(
-          guideTarget.i,
-          guideTarget.j,
-          board.topY(guideTarget.i, guideTarget.j) - config.board.SINK + 0.72
-        );
-        guideLabel.style.display = 'block';
-        guideLabel.style.left = `${guidePoint.x.toFixed(1)}px`;
-        guideLabel.style.top = `${guidePoint.y.toFixed(1)}px`;
-      } else {
-        guideLabel.style.display = 'none';
-      }
+      updateGuideLabel({ hud, guide, board, view, guideLabel });
 
       updateGhost();
       view.draw();
@@ -327,6 +296,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
     unitView,
     onReady: () => world.ready(),
     hasNextLevel: !!nextId,
+    levelId,
     onNextLevel: () => { if (nextId) go(nextId); },
     // Tile boundaries are on exactly while a placement is armed -- for towers
     // and for the castle alike. They answer "which square am I aiming at", so

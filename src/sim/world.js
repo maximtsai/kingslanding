@@ -32,6 +32,16 @@ import { createIntro } from './intro.js';
 // (see sim/intro.js). Everywhere else the game still opens on CASTLE.
 export const PHASE = { INTRO: 'INTRO', CASTLE: 'CASTLE', BUILD: 'BUILD', WAVE: 'WAVE', LOST: 'LOST', WON: 'WON' };
 
+// The purse a level opens on. A level may name its own in
+// config.economy.levelStartGold; everything else takes the default. Both the
+// first build and restartLevel go through here, or a retry quietly hands the
+// player the wrong opening.
+function openingGold(board) {
+  const perLevel = config.economy.levelStartGold;
+  const own = perLevel && perLevel[board.level.id];
+  return own === undefined ? config.economy.startGold : own;
+}
+
 export function createWorld(board) {
   const waveTable = config.waves.levels[board.level.id];
   if (!waveTable) {
@@ -49,7 +59,7 @@ export function createWorld(board) {
     // a property of where their shores are.
     waveTable,
     waveCount: waveTable.length,
-    gold: config.economy.startGold,
+    gold: openingGold(board),
     units: [],
     events: [],
     nextId: 1
@@ -378,7 +388,7 @@ export function createWorld(board) {
     for (const s of structures.list.slice()) {
       if (s.kind === 'tower' || s.kind === 'castle') structures.sell(s);
     }
-    world.gold = config.economy.startGold;
+    world.gold = openingGold(board);
     world.waveIndex = 0;
     // No previous wave, so no house survived one: a restarted level must open on
     // exactly the purse a fresh one does. Without this, beginBuild pays income

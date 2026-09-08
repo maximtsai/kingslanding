@@ -1,7 +1,13 @@
 // Hero TD -- guide view.
 //
-// Tutorial target marker: torus ring + floating triangle pointer with
-// entrance bounce animation and optional pulsing.
+// Two visual languages, deliberately kept apart:
+//
+//   * ring + floating triangle -- GO HERE. Reserved for movement, and for
+//     nothing else. The moment it also means "build here" it stops meaning
+//     anything precise.
+//   * flat hollow square on the ground -- PUT A BUILDING HERE. The castle
+//     suggestion is a 2x2 of these and the first-tower hint a single tile;
+//     same marker, two sizes, so a player who has learned one has learned both.
 
 import { config } from '../config.js';
 
@@ -34,47 +40,88 @@ export function createGuideView(THREE, board, dynamicRoot) {
   pointer.scale.setScalar(GUIDE_SCALE);
   group.add(pointer);
 
-  // ---- 2x2 castle placement suggestion (level one) ----
-  // A hollow square outline shown at the centre of the tier-2 area when the
-  // player arms the castle button. It suggests a placement without blocking
-  // the player from choosing elsewhere.
-  const SUGGEST_SIZE = 2;     // 2×2 tiles
-  const BORDER = 0.09;        // half-tile border width
-  const suggestGroup = new THREE.Group();
-  suggestGroup.visible = false;
-  suggestGroup.rotation.x = -Math.PI / 2;
-  suggestGroup.renderOrder = 4;
-  dynamicRoot.add(suggestGroup);
+  // ---- placement markers ----
+  // A flat square laid on the ground: a faint white wash inside, a brighter
+  // hollow border around it. It suggests a spot without blocking the player
+  // from choosing elsewhere.
+  //
+  // BORDER is an ABSOLUTE width, not a fraction of the square. Line weight is
+  // what makes two markers read as the same kind of thing, so the 1x1 gets a
+  // proportionally heavier outline rather than a fainter one.
+  const BORDER = 0.09;
+  const CASTLE_SPAN = 2;      // the keep's footprint, in tiles
+  const TOWER_SPAN = 1;       // a tower's
 
-  const suggestMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.45,
-    depthWrite: false, side: THREE.DoubleSide, toneMapped: false
-  });
-  // Outer fill — faint white wash so the square reads at a glance.
-  const suggestFill = new THREE.Mesh(
-    new THREE.PlaneGeometry(SUGGEST_SIZE, SUGGEST_SIZE),
-    suggestMat
-  );
-  suggestFill.position.z = -0.005;
-  suggestGroup.add(suggestFill);
-  // Hollow border — brighter, thinner ring that outlines the footprint.
-  const suggestBorderMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.72,
-    depthWrite: false, side: THREE.DoubleSide, toneMapped: false
-  });
-  const suggestBorder = new THREE.Group();
-  for (const [w, h, x, y] of [
-    [SUGGEST_SIZE, BORDER, 0,  (SUGGEST_SIZE - BORDER) / 2],
-    [SUGGEST_SIZE, BORDER, 0, -(SUGGEST_SIZE - BORDER) / 2],
-    [BORDER, SUGGEST_SIZE,  (SUGGEST_SIZE - BORDER) / 2, 0],
-    [BORDER, SUGGEST_SIZE, -(SUGGEST_SIZE - BORDER) / 2, 0]
-  ]) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), suggestBorderMat);
-    m.position.set(x, y, 0);
-    suggestGroup.add(m);
+  function createSquareMarker(span) {
+    const markerGroup = new THREE.Group();
+    markerGroup.visible = false;
+    markerGroup.rotation.x = -Math.PI / 2;
+    markerGroup.renderOrder = 4;
+    dynamicRoot.add(markerGroup);
+
+    // Materials are per marker, not shared: sync() breathes their opacity, and
+    // one clock driving both would tie the two markers together.
+    const fillMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.45,
+      depthWrite: false, side: THREE.DoubleSide, toneMapped: false
+    });
+    const fill = new THREE.Mesh(new THREE.PlaneGeometry(span, span), fillMat);
+    fill.position.z = -0.005;
+    markerGroup.add(fill);
+
+    const borderMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.72,
+      depthWrite: false, side: THREE.DoubleSide, toneMapped: false
+    });
+    for (const [w, h, x, y] of [
+      [span, BORDER, 0,  (span - BORDER) / 2],
+      [span, BORDER, 0, -(span - BORDER) / 2],
+      [BORDER, span,  (span - BORDER) / 2, 0],
+      [BORDER, span, -(span - BORDER) / 2, 0]
+    ]) {
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(w, h), borderMat);
+      bar.position.set(x, y, 0);
+      markerGroup.add(bar);
+    }
+    return { group: markerGroup, fillMat, borderMat, span, time: 0, i: null, j: null };
   }
-  let suggestTime = 0;
-  let shownSuggestI = null, shownSuggestJ = null;
+
+  // A footprint is anchored at its origin tile, so its CENTRE sits half a tile
+  // further along for every tile of span past the first: a 2x2 is offset 0.5, a
+  // 1x1 is offset none and sits exactly on the tile it names.
+  // Positions a marker but does NOT reveal it. The build hint has to be put in
+  // place while it is still waiting out its delay, so showing cannot be a side
+  // effect of placing -- each caller says when its own marker is visible.
+  function placeSquare(marker, ti, tj) {
+    const offset = (marker.span - 1) / 2;
+    marker.group.position.set(
+      board.px(ti + offset),
+      board.topY(ti, tj) - SINK + 0.05,
+      board.px(tj + offset)
+    );
+    if (marker.i !== ti || marker.j !== tj) {
+      marker.i = ti;
+      marker.j = tj;
+      marker.time = 0;
+    }
+  }
+
+  function hideSquare(marker) {
+    marker.group.visible = false;
+    marker.i = null;
+    marker.j = null;
+  }
+
+  function breatheSquare(marker, elapsed) {
+    if (!marker.group.visible) return;
+    marker.time += elapsed;
+    marker.group.scale.setScalar(1 + 0.08 * Math.sin(marker.time * 3.5));
+    marker.fillMat.opacity = 0.32 + 0.13 * Math.sin(marker.time * 2.8);
+    marker.borderMat.opacity = 0.62 + 0.18 * Math.sin(marker.time * 4.1);
+  }
+
+  const castleSite = createSquareMarker(CASTLE_SPAN);
+  const buildSite = createSquareMarker(TOWER_SPAN);
 
   let guideTime = 0;
   let pulseTime = 0;
@@ -83,6 +130,19 @@ export function createGuideView(THREE, board, dynamicRoot) {
   let shownI = null;
   let shownJ = null;
   let currentTarget = null;
+  // The build-site square carries its own target rather than writing into
+  // currentTarget. The two are hidden and shown by separate calls, and sharing
+  // one field meant whichever ran last won -- which is how a label ends up
+  // floating over nothing.
+  let buildTarget = null;
+  // The first-tower hint holds off for a beat. The build phase opens with the
+  // castle landing, the build bar sliding in and the archer button starting to
+  // pulse; a marker arriving in the middle of that is a fourth thing moving
+  // while the player is still reading the first three. A second later it lands
+  // on its own and is the only new thing on screen.
+  const BUILD_SITE_DELAY = 1;
+  let buildWanted = false;
+  let buildDelay = 0;
   const ENTRANCE = 1.25;
 
   return {
@@ -131,36 +191,45 @@ export function createGuideView(THREE, board, dynamicRoot) {
         }
         pointer.position.y = 0.30 + Math.sin(guideTime * 3.2) * 0.07;
       }
-      // ---- 2×2 castle suggestion highlight ----
-      if (suggestGroup.visible) {
-        suggestTime += elapsed;
-        const pulse = 1 + 0.08 * Math.sin(suggestTime * 3.5);
-        suggestGroup.scale.setScalar(pulse);
-        suggestMat.opacity = 0.32 + 0.13 * Math.sin(suggestTime * 2.8);
-        suggestBorderMat.opacity = 0.62 + 0.18 * Math.sin(suggestTime * 4.1);
+      // ---- placement markers ----
+      // The build hint serves its delay here rather than at the call site,
+      // because this is the only thing holding a clock. The castle suggestion
+      // has no delay and shows the moment it is asked for.
+      if (buildWanted) {
+        buildDelay = Math.min(BUILD_SITE_DELAY, buildDelay + elapsed);
+        const ready = buildDelay >= BUILD_SITE_DELAY;
+        buildSite.group.visible = ready;
+        // The floating label reads `target`, so withholding it until the same
+        // instant is what keeps the words and the square arriving together
+        // instead of the caption turning up a second early over nothing.
+        buildTarget = ready ? { i: buildSite.i, j: buildSite.j } : null;
       }
+      breatheSquare(castleSite, elapsed);
+      breatheSquare(buildSite, elapsed);
     },
-    // ---- 2×2 castle suggestion highlight ----
+    // ---- 2x2 castle placement suggestion (level one) ----
     showSuggestion(ti, tj) {
-      const cx = board.px(ti + 0.5);
-      const cz = board.px(tj + 0.5);
-      const y = board.topY(ti, tj) - SINK + 0.05;
-      const changed = shownSuggestI !== ti || shownSuggestJ !== tj;
-      suggestGroup.position.set(cx, y, cz);
-      suggestGroup.visible = true;
-      if (changed) {
-        shownSuggestI = ti;
-        shownSuggestJ = tj;
-        suggestTime = 0;
-      }
+      placeSquare(castleSite, ti, tj);
+      castleSite.group.visible = true;
     },
     hideSuggestion() {
-      suggestGroup.visible = false;
-      shownSuggestI = null;
-      shownSuggestJ = null;
+      hideSquare(castleSite);
+    },
+    // ---- 1x1 first-tower suggestion (level one) ----
+    showBuildSite(ti, tj) {
+      // Says the hint is wanted and where. Whether it is actually on screen is
+      // sync()'s call, once the delay has run.
+      placeSquare(buildSite, ti, tj);
+      buildWanted = true;
+    },
+    hideBuildSite() {
+      hideSquare(buildSite);
+      buildWanted = false;
+      buildDelay = 0;
+      buildTarget = null;
     },
     get target() {
-      return currentTarget;
+      return currentTarget || buildTarget;
     }
   };
 }

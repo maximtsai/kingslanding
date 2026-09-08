@@ -45,6 +45,24 @@ export function pointInPolygon(point, polygon) {
   return inside;
 }
 
+// Shortest distance from a point to a closed ring's EDGES -- which is not the
+// same question as pointInPolygon, and both get asked together: a flat marker
+// laid on the sea has to be outside the coastline and clear of it by its own
+// radius, or it reads as sitting on the beach.
+export function distanceToLoop(point, polygon) {
+  let best = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[j], b = polygon[i];
+    const dx = b[0] - a[0], dz = b[1] - a[1];
+    const lengthSq = dx * dx + dz * dz;
+    const t = lengthSq
+      ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dz) / lengthSq))
+      : 0;
+    best = Math.min(best, Math.hypot(a[0] + dx * t - point[0], a[1] + dz * t - point[1]));
+  }
+  return best;
+}
+
 // Mitred offset of a closed ring. The clamp stops a sharp corner from throwing
 // its miter out to infinity.
 export function offsetLoop(points, distance) {

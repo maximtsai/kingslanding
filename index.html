@@ -185,7 +185,7 @@
     min-width: 150px; padding: 7px 12px; border-radius: 999px;
     background: rgba(18,28,33,.92); border: 2px solid rgba(242,193,78,.9);
     color: #f6f7f3; text-align: center; white-space: nowrap;
-    font-size: 19px; font-weight: 800; letter-spacing: .04em;
+    font-size: 21px; font-weight: 800; letter-spacing: .04em;
     text-shadow: 0 2px 6px rgba(0,0,0,.65);
   }
   @keyframes confirm-pop {
@@ -206,7 +206,7 @@
     padding: 7px 16px; border-radius: 999px; white-space: nowrap;
     background: rgba(24,10,12,.92); border: 2px solid rgba(235,96,84,.92);
     color: #ffe9e7; text-align: center;
-    font-size: 19px; font-weight: 900; letter-spacing: .06em;
+    font-size: 21px; font-weight: 900; letter-spacing: .06em;
     text-shadow: 0 2px 6px rgba(0,0,0,.7);
   }
   #place-denied.pop { animation: denied-pop 1.15s ease-out forwards; }
@@ -263,7 +263,7 @@
     display: none; position: absolute; z-index: 9; pointer-events: none;
     padding: 5px 10px; border-radius: 999px;
     background: rgba(18,28,33,.88); border: 2px solid rgba(242,193,78,.86);
-    color: #f6f7f3; font-size: 16px; font-weight: 900; letter-spacing: .1em;
+    color: #f6f7f3; font-size: 18px; font-weight: 900; letter-spacing: .1em;
     transform: translate(-50%, 0); white-space: nowrap;
     text-shadow: 0 2px 5px rgba(0,0,0,.7);
   }
@@ -316,7 +316,7 @@
     transform: translate(-50%, -100%);
     padding: 8px 16px; border-radius: 999px;
     background: #000; color: #fff; white-space: nowrap;
-    font-size: 21px; font-weight: 900; letter-spacing: .08em;
+    font-size: 23px; font-weight: 900; letter-spacing: .08em;
     box-shadow: 0 4px 12px rgba(0,0,0,.35);
     pointer-events: none;
   }
@@ -342,6 +342,11 @@
   /* While the level-one defense tutorial is active, the archer button pulses
      gold to point at the recommended first purchase. */
   .tower-button.tutorial-pulse {
+    animation: btn-tutorial-pulse 1.1s ease-in-out infinite;
+  }
+  /* The same pulse on READY, which is where the wave-one tutorial sends the
+     player once there is no gold left for another tower. */
+  #btn-ready.tutorial-pulse {
     animation: btn-tutorial-pulse 1.1s ease-in-out infinite;
   }
   @keyframes btn-tutorial-pulse {
@@ -400,7 +405,7 @@
     font-size: 30.5px; font-weight: 900; letter-spacing: .08em; color: var(--gold);
     text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
   }
-  #castle-prompt .sub { font-size: 22px; font-weight: 800; color: #000; }
+  #castle-prompt .sub { font-size: 24px; font-weight: 800; color: #000; }
 
   /* Siting the castle is ARMED, never automatic (TDD 4). Until this is pressed
      a tap means what it means everywhere else -- move the king -- so the very

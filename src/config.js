@@ -540,6 +540,12 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
   // ---- economy (TDD 12) ----
   economy: {
     startGold: 50,             // two archer towers, with change; wave 1 is a real choice
+    // Per-level opening purse, for levels that want a different first decision
+    // from the default. Level one is the onboarding hour: 30 buys exactly two
+    // archer towers and no change, so the tutorial's "build until you cannot"
+    // beat ends on an empty purse rather than on an awkward remainder the
+    // player is left holding with nothing to spend it on.
+    levelStartGold: { one: 30 },
     houseIncome: 10,           // per surviving house, at the start of build phase
     // Coins drop where a unit died and the king picks them up by walking over
     // them. TDD 12 is explicit that this is a feel-good mechanic and a reason to

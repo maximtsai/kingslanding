@@ -104,6 +104,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // the barricade hold and the archer pulse out of the tutorial without a word.
   const archerButton = document.querySelector('[data-build="archer"]');
   const barricadeButton = document.querySelector('[data-build="barricade"]');
+  const readyButton = $('btn-ready');
 
   // ---- level-one onboarding ----
   // Suggestion 3: after the castle is placed, guide the first archer tower.
@@ -113,6 +114,27 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   const L1 = levelId === 'one';
   const defenseTutorialActive = () => L1 && world.phase === PHASE.BUILD &&
     !didBuildFirstTower && !world.structures.towers().length;
+  // ---- the wave-one glow chain ----
+  // The opening build is the only one that also has to teach when to STOP. So
+  // the archer button keeps its glow for as long as another tower is
+  // affordable -- not merely until the first one is down -- and the moment it
+  // is not, the glow moves to READY, which is by then the only thing left to
+  // do. Shown rather than said: no callout has to explain "spend it all".
+  //
+  // Wave one only. From the second build phase on, deciding what to do with a
+  // purse IS the game, and a button that keeps telling the player to empty it
+  // would be giving bad advice.
+  const firstBuildPhase = () => L1 && world.phase === PHASE.BUILD && world.waveIndex === 0;
+  const canAffordArcher = () => world.gold >= config.towers.archer.cost;
+  // Exactly one of these is ever true, and affordability is the only thing that
+  // decides which. OR-ing the archer glow with defenseTutorialActive() -- the
+  // "no tower built yet" test that used to drive it on its own -- looked like
+  // the conservative change and was not: with no tower down and no gold, BOTH
+  // buttons lit, and the game was pointing at a purchase the player could not
+  // make. defenseTutorialActive() still places the guide marker on the
+  // recommended tile; it just no longer has a say in which button glows.
+  const archerPulseActive = () => firstBuildPhase() && canAffordArcher();
+  const readyPulseActive = () => firstBuildPhase() && !canAffordArcher();
   // Check if all training dummies are destroyed (level 1 only).
   const allDummiesDestroyed = () => {
     if (!L1) return true;
@@ -408,18 +430,32 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     setSelected(null);
   };
 
+  // A refused purchase is shown as well as heard: the button shakes and flushes
+  // red (see .tower-button.refused). Restarting it needs the class off, a forced
+  // reflow, then on -- the same trick the confirm button's pop uses, and for the
+  // same reason: two refusals in a row must read as two, not as one.
+  const refuse = button => {
+    button.classList.remove('refused');
+    void button.offsetWidth;
+    button.classList.add('refused');
+  };
+
   for (const button of buildButtons) {
     const type = button.dataset.build;
+    // Property assignment, not addEventListener: the build bar outlives a level
+    // and hud.dispose() does not own these nodes, so a listener added per HUD
+    // would stack up one deep per level played.
+    button.onanimationend = () => button.classList.remove('refused');
     button.onclick = () => {
       // Refusing a purchase is worth a sound too. A dead button that makes no
       // noise reads as a broken button.
-      if (world.gold < config.towers[type].cost) { feedback.denied(); return; }
+      if (world.gold < config.towers[type].cost) { feedback.denied(); refuse(button); return; }
       feedback.tap();
       setSelected(type);
     };
   }
 
-  $('btn-ready').onclick = click(() => {
+  readyButton.onclick = click(() => {
     setSelected(null); inspecting = null; refreshPanels(); onReady();
   });
 
@@ -927,6 +963,8 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
 
     dispose() {
       stopIncomingTutorial();
+      if (archerButton) archerButton.classList.remove('tutorial-pulse');
+      if (readyButton) readyButton.classList.remove('tutorial-pulse');
       if (tutorialCallout) tutorialCallout.style.display = 'none';
       for (const undo of teardown) undo();
     },
@@ -1050,10 +1088,12 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
         }
       }
 
-      // While the level-one defense tutorial is up, the archer button pulses.
-      if (L1 && archerButton) {
-        archerButton.classList.toggle('tutorial-pulse', defenseTutorialActive());
-      }
+      // The wave-one glow chain: archer while there is gold for one, then
+      // READY. Deliberately NOT guarded by `if (L1)` -- both predicates check
+      // the level themselves, and gating the toggle instead of the value is how
+      // a glow gets stranded on the button when the level changes under it.
+      if (archerButton) archerButton.classList.toggle('tutorial-pulse', archerPulseActive());
+      if (readyButton) readyButton.classList.toggle('tutorial-pulse', readyPulseActive());
 
       // If the player starts the wave or leaves level one, no tutorial overlay
       // should remain over combat. The one-shot flags stay consumed for this HUD.

@@ -71,6 +71,99 @@ function makeSurfMaterial(THREE, time) {
   });
 }
 
+// The open sea, as twenty pointed crests that surface, spread, and sink again.
+//
+// One merged geometry, one draw call, forty triangles. The alternative --
+// a wave field in the water plane's own fragment shader -- costs no geometry at
+// all but pays for itself on every pixel of the frame, since that plane covers
+// all of them. batch.js exists because this diorama's budget is draw calls and
+// fill, not vertices, so the cheap-looking option is the expensive one here.
+const CREST_COUNT = 20;
+// Local outline of a crest at size 1, in world units. Three sharp points -- two
+// tips and the apex -- and no curve anywhere: the shape is the whole read, so
+// it is authored rather than derived from a sine.
+const CREST_LENGTH = 0.95;    // tip to tip, halved
+const CREST_PEAK = 0.44;      // how far the apex juts ahead of the tips
+const CREST_THICK = 0.17;     // apex thickness, tapering to nothing at the tips
+const CREST_SIZE_MIN = 0.70;
+const CREST_SIZE_MAX = 1.10;
+// The tips finish their spread slightly ahead of the apex, so a crest SHARPENS
+// as it rises rather than merely inflating. Shared with the vertex shader by
+// substitution below -- the clearance maths depends on the same number, and two
+// copies of it would drift.
+const TIP_STRETCH = 0.16;
+// One heading for the whole sea. Real swell arrives in parallel, and crests
+// pointing twenty ways read as debris rather than as water; the jitter
+// is what keeps that from looking stamped.
+const SWELL_HEADING = -0.62 + Math.PI;   // apexes face the opposite shore
+const SWELL_SPREAD = 0.34;
+// Clear of the coast: past the surf ring's outer edge (0.090) and the shallows
+// halo (0.66) with room to spare, so a crest never crowds the shoreline.
+const SHORE_CLEARANCE = 0.9;
+// The band a crest may surface in, measured out from the island's own extent.
+// Near enough to read as this island's water, far enough to leave the surf its
+// own space.
+const CREST_NEAR = 1.6;
+const CREST_FAR = 7.0;
+// The largest a crest can ever get, which is the radius every candidate spot is
+// cleared for -- so any crest may take any spot without a second test.
+const CREST_REACH = Math.max(CREST_LENGTH, CREST_PEAK) * CREST_SIZE_MAX * (1 + TIP_STRETCH);
+// Candidate spots, validated once at build time. Respawning picks from this
+// pool rather than testing the coastline live: the polygon test is the whole
+// cost, and doing it up front means a respawn can never stall a frame or fail
+// and drop a wave on the sand.
+const SPOT_POOL = 72;
+// Keeps two live crests from surfacing on top of each other. Deliberately
+// modest: at twenty crests a wider ring than this saturates the band, and a
+// respawn that cannot find a free spot has to settle for a worse one. Crests
+// this close still rarely overlap, because their lives are staggered and one is
+// shrinking while the other grows.
+const CREST_SPACING = 1.7;
+const CREST_Y = 0.03;
+
+// A crest's whole life is one scale ramp: nothing, out to full spread, back to
+// nothing. It is reseated at a new spot at the instant it is at zero, so the
+// move is never seen -- there is no geometry on screen to move.
+function makeCrestMaterial(THREE, time, base, swell) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      // The SAME uniform object the sky gradient uses, not a copy of its value.
+      // The evening blend in renderer.js mutates that colour in place, so
+      // sharing the reference is what keeps the crests in step with dusk
+      // without any wiring of their own -- and what stops them glowing at night
+      // the way a hard-coded white would.
+      uBase: base,
+      uInvPeriod: { value: 1 / WAVE_PERIOD },
+      uSwell: { value: swell },
+      uTime: time
+    },
+    vertexShader: [
+      'attribute vec2 aLocal; attribute float aPhase; attribute float aTip;',
+      'uniform float uInvPeriod, uSwell, uTime;',
+      'void main(){',
+      // One life per crest, 0..1. The clock wraps at exactly WAVE_PERIOD, so
+      // uTime * uInvPeriod runs 0..1 and the wrap lands somewhere harmless in
+      // every crest's life instead of resetting them all at once.
+      ' float life = fract(uTime * uInvPeriod + aPhase);',
+      // sin() over one half-turn: zero at birth, full at mid-life, zero again.
+      // A weak device holds every crest at a fixed spread instead -- uSwell is
+      // 0 or 1, so the mix is exact and costs no branch.
+      ' float grow = mix(0.8, sin(life * 3.14159265), uSwell);',
+      ' vec3 p = position;',
+      ' p.xz += aLocal * (grow * (1.0 + ' + TIP_STRETCH.toFixed(2) + ' * aTip * grow));',
+      ' gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'uniform vec3 uBase;',
+      // Fully opaque: a lift off the sea's own colour rather than a blend into
+      // it, so the edge stays hard at every zoom and there is nothing to sort.
+      'void main(){ gl_FragColor = vec4(mix(uBase, vec3(1.0), 0.30), 1.0); }'
+    ].join('\n'),
+    side: THREE.DoubleSide
+  });
+}
+
 export function buildWater(ctx) {
   const { THREE, P, scene, footprints } = ctx;
   const { offsetLoop, signedArea } = D;
@@ -183,6 +276,190 @@ export function buildWater(ctx) {
     shorelineRing(loop, -0.030, 0.090, 0.05, foamMat, false);
   });
 
+  // ---- open sea ----
+  // Crests surface outside the coastline, never on it. Land is the tier-1
+  // contour -- the same loops the surf is drawn from -- and a spot has to clear
+  // it by the largest radius any crest can reach, not merely fall outside it,
+  // or half a wave ends up on sand.
+  const land = footprints[1].filter(loop => D.signedArea(loop.points) > 0);
+  // A stream of its own, NOT ctx.rand. scene.js is explicit that every builder
+  // draws from one shared PRNG and that inserting a call shifts everything
+  // downstream, so drawing from it here would reshuffle every structure and
+  // tree on the island.
+  const random = D.rng(0x5eac1f);
+
+  // The island's own extent, so crests surface off the coast of whichever level
+  // is loaded rather than at a distance tuned for one of them.
+  let landRadius = 0;
+  land.forEach(loop => loop.points.forEach(p => {
+    landRadius = Math.max(landRadius, Math.hypot(p[0], p[1]));
+  }));
+
+  const spotClear = (x, z) => land.every(loop =>
+    !D.pointInPolygon([x, z], loop.points) &&
+    D.distanceToLoop([x, z], loop.points) > CREST_REACH + SHORE_CLEARANCE);
+
+  // Flat, not an array of pairs: this is read on every crowding test and a
+  // typed array keeps the whole pool in two cache lines instead of scattering
+  // it across as many little arrays as there are spots.
+  const spots = new Float32Array(SPOT_POOL * 2);
+  let spotCount = 0;
+  for (let tries = 0; tries < SPOT_POOL * 40 && spotCount < SPOT_POOL; tries++) {
+    const angle = random() * Math.PI * 2;
+    const distance = landRadius + CREST_NEAR + random() * (CREST_FAR - CREST_NEAR);
+    const x = Math.cos(angle) * distance, z = Math.sin(angle) * distance;
+    if (spotClear(x, z)) { spots[spotCount * 2] = x; spots[spotCount * 2 + 1] = z; spotCount++; }
+  }
+
+  // Four vertices per crest, not six. The kite is two triangles that share the
+  // apex-to-back edge, so an index buffer draws it from four corners -- a third
+  // less vertex data to hold and, more to the point, a third less to rewrite
+  // and re-upload every time a crest is reseated.
+  const CORNERS = 4;
+  const CREST_ORDER = [0, 1, 3, 1, 2, 3];
+  const positions = new Float32Array(CREST_COUNT * CORNERS * 3);
+  const local = new Float32Array(CREST_COUNT * CORNERS * 2);
+  // How much of the tip stretch each corner takes: the tips finish ahead of the
+  // apex, so the crest sharpens as it rises. Same for every crest, so this and
+  // the phase below are written once at build and never touched again -- they
+  // are not part of what a reseat changes.
+  const CORNER_TIP = [1, 0.45, 1, 0];
+  const tips = new Float32Array(CREST_COUNT * CORNERS);
+  const phases = new Float32Array(CREST_COUNT * CORNERS);
+  const indices = new Uint16Array(CREST_COUNT * CREST_ORDER.length);
+  // Per crest: which spot it is on, how big this life is, and which way it
+  // faces. Phase is fixed for the run -- it is the stagger, and re-rolling it
+  // on every respawn would let the crests drift into step.
+  const crests = [];
+  const lastLife = new Float32Array(CREST_COUNT);
+
+  // Writes one crest's four corners from its current spot, size and heading.
+  // Position and aLocal only: everything else about a crest is build-time.
+  function writeCrest(index) {
+    const c = crests[index];
+    const sx = spots[c.spot * 2], sz = spots[c.spot * 2 + 1];
+    const length = CREST_LENGTH * c.size, peak = CREST_PEAK * c.size, thick = CREST_THICK * c.size;
+    // Two tips, an apex, and the back of the apex: a kite with three sharp
+    // points and no rounded edge to soften at any zoom.
+    const outline = [
+      -length, 0,                 // left tip
+      0, peak,                    // apex
+      length, 0,                  // right tip
+      0, peak - thick             // back of the apex
+    ];
+    const cos = Math.cos(c.heading), sin = Math.sin(c.heading);
+    for (let n = 0; n < CORNERS; n++) {
+      const lx = outline[n * 2], lz = outline[n * 2 + 1];
+      const v = index * CORNERS + n;
+      positions[v * 3] = sx;
+      positions[v * 3 + 1] = CREST_Y;
+      positions[v * 3 + 2] = sz;
+      local[v * 2] = lx * cos - lz * sin;
+      local[v * 2 + 1] = lx * sin + lz * cos;
+    }
+  }
+
+  // How a candidate spot rates against the crests already out there. Two
+  // separate answers, because they are not equally bad: sharing a spot exactly
+  // stacks two crests into one shape and is never acceptable, while merely
+  // sitting close is usually invisible, since staggered lives mean one is
+  // shrinking while the other grows.
+  //
+  // Compares SQUARED distances -- this is the one thing here that runs in a
+  // loop inside a loop, and the ordering it needs is the same either way.
+  const CREST_SPACING_SQ = CREST_SPACING * CREST_SPACING;
+  const TAKEN = 2, CLOSE = 1, FREE = 0;
+  function rateSpot(index, candidate) {
+    const cx = spots[candidate * 2], cz = spots[candidate * 2 + 1];
+    let rating = FREE;
+    for (let k = 0; k < crests.length; k++) {
+      const other = crests[k];
+      if (k === index || other.spot === null) continue;
+      if (other.spot === candidate) return TAKEN;
+      const dx = spots[other.spot * 2] - cx, dz = spots[other.spot * 2 + 1] - cz;
+      if (dx * dx + dz * dz < CREST_SPACING_SQ) rating = CLOSE;
+    }
+    return rating;
+  }
+
+  // A fresh spot, size and heading, taken at the instant the crest is at zero
+  // scale. Takes the first free spot it finds; failing that it falls back to
+  // the best it saw rather than looping, and a spot another crest is already
+  // sitting on is never the answer.
+  function reseat(index) {
+    const c = crests[index];
+    let choice = c.spot === null ? 0 : c.spot;
+    let best = TAKEN + 1;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const candidate = Math.min(spotCount - 1, Math.floor(random() * spotCount));
+      if (candidate === c.spot) continue;
+      const rating = rateSpot(index, candidate);
+      if (rating < best) { best = rating; choice = candidate; }
+      if (rating === FREE) break;
+    }
+    c.spot = choice;
+    c.size = CREST_SIZE_MIN + random() * (CREST_SIZE_MAX - CREST_SIZE_MIN);
+    c.heading = SWELL_HEADING + (random() - 0.5) * 2 * SWELL_SPREAD;
+    writeCrest(index);
+  }
+
+  for (let i = 0; i < CREST_COUNT; i++) {
+    // Evenly staggered lives, so at any moment the sea has crests at every
+    // stage rather than all of them rising and falling together.
+    const phase = (i + random() * 0.6) / CREST_COUNT;
+    crests.push({ spot: null, size: 1, heading: SWELL_HEADING, phase });
+    lastLife[i] = phase % 1;
+    for (let n = 0; n < CORNERS; n++) {
+      tips[i * CORNERS + n] = CORNER_TIP[n];
+      phases[i * CORNERS + n] = phase;
+    }
+    for (let n = 0; n < CREST_ORDER.length; n++) {
+      indices[i * CREST_ORDER.length + n] = i * CORNERS + CREST_ORDER[n];
+    }
+    reseat(i);
+  }
+
+  const crestGeometry = new THREE.BufferGeometry();
+  const positionAttribute = new THREE.BufferAttribute(positions, 3);
+  const localAttribute = new THREE.BufferAttribute(local, 2);
+  // Only these two change; three.js can keep the rest in static VRAM.
+  positionAttribute.setUsage(THREE.DynamicDrawUsage);
+  localAttribute.setUsage(THREE.DynamicDrawUsage);
+  crestGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  crestGeometry.setAttribute('position', positionAttribute);
+  crestGeometry.setAttribute('aLocal', localAttribute);
+  crestGeometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+  crestGeometry.setAttribute('aTip', new THREE.BufferAttribute(tips, 1));
+  // uBottom, not uPool: the crests sit low in the frame, where the gradient has
+  // already run to its bottom colour, so that is the water they have to lift off.
+  const crestMesh = new THREE.Mesh(
+    crestGeometry, makeCrestMaterial(THREE, waveTime, waterMat.uniforms.uBottom, swell));
+  // The spots move and three.js computes a bounding sphere once, so culling
+  // against a stale one would blink a crest out at the edge of the frame. At
+  // forty triangles there is nothing to save by culling anyway.
+  crestMesh.frustumCulled = false;
+  scene.add(crestMesh);
+
+  // Reseat any crest whose life has just wrapped. Called once a frame, but only
+  // touches geometry at the instant a crest is at zero scale -- across all of
+  // them that is a few times a second, four corners each.
+  function cycleCrests() {
+    let moved = false;
+    const turn = waveTime.value / WAVE_PERIOD;
+    for (let i = 0; i < CREST_COUNT; i++) {
+      const life = (turn + crests[i].phase) % 1;
+      // The clock's own wrap is NOT a life wrap: at waveTime = WAVE_PERIOD the
+      // ratio is 1 and fract(1 + phase) is phase, exactly where the life
+      // restarts. So this fires only when a crest reaches the end of its ramp.
+      if (life < lastLife[i]) { reseat(i); moved = true; }
+      lastLife[i] = life;
+    }
+    if (moved) {
+      positionAttribute.needsUpdate = true;
+      localAttribute.needsUpdate = true;
+    }
+  }
+
   // The sky is this material, not scene.background: the plane is 320 units
   // across and covers the whole frame, so the renderer's clear colour is never
   // seen. Anything that wants to change the sky has to change these uniforms.
@@ -191,6 +468,11 @@ export function buildWater(ctx) {
     skyMaterial: waterMat,
     // Fed the frame delta, not a running total: wrapping here is what keeps the
     // argument to sin() small forever. See WAVE_PERIOD.
-    advance(dt) { waveTime.value = (waveTime.value + dt) % WAVE_PERIOD; }
+    advance(dt) {
+      waveTime.value = (waveTime.value + dt) % WAVE_PERIOD;
+      // A weak device holds every crest at a fixed spread (see the material),
+      // so there is no life to wrap and nothing to reseat.
+      if (swell) cycleCrests();
+    }
   };
 }

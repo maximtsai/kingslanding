@@ -47,6 +47,32 @@ button:focus-visible { outline: 4px solid var(--paper); outline-offset: 5px; }
 }
 .tower-button.poor { opacity: .65; }
 .tower-button.poor .cost { color: #e9a89a; }
+/* A refused purchase: the card shakes its head and flushes red.
+
+   The tint is an inset box-shadow, not a background. The card's background is a
+   gradient and a keyframe cannot cross-fade one cleanly, so a flat inset spread
+   lies over it instead -- which also keeps both edges hard, the same no-blur
+   rule the rest of this sheet follows.
+
+   .poor dims an unaffordable card to 65%, which would mute the flash, so the
+   animation holds it at full opacity for the moment it is speaking. There is no
+   fill mode and hud.js drops the class on animationend, so the card falls back
+   to whatever .poor says rather than wearing the last keyframe.
+
+   The prefers-reduced-motion rule at the foot of this file switches this off
+   with every other animation; there, the denied sound carries the refusal. */
+.tower-button.refused {
+  animation: btn-refuse .42s cubic-bezier(.36,.07,.19,.97);
+}
+@keyframes btn-refuse {
+  0%   { transform: translateX(0);    opacity: 1; border-color: #536568; box-shadow: inset 0 0 0 200px rgba(194,53,47,0); }
+  14%  { transform: translateX(-7px); opacity: 1; border-color: #e9756a; box-shadow: inset 0 0 0 200px rgba(194,53,47,.34); }
+  30%  { transform: translateX(6px);  opacity: 1; border-color: #f08a7e; box-shadow: inset 0 0 0 200px rgba(194,53,47,.42); }
+  46%  { transform: translateX(-5px); opacity: 1; border-color: #e9756a; box-shadow: inset 0 0 0 200px rgba(194,53,47,.34); }
+  62%  { transform: translateX(3px);  opacity: 1; border-color: #d05e54; box-shadow: inset 0 0 0 200px rgba(194,53,47,.20); }
+  80%  { transform: translateX(-2px); opacity: 1; border-color: #536568; box-shadow: inset 0 0 0 200px rgba(194,53,47,.07); }
+  100% { transform: translateX(0);    opacity: 1; border-color: #536568; box-shadow: inset 0 0 0 200px rgba(194,53,47,0); }
+}
 .tower-button .build-icon { width: 100px; height: 96px; flex: none; }
 .tower-button .name { color: var(--paper); font-size: 23px; font-weight: 750; letter-spacing: 0; }
 .tower-button .cost { color: #e3c685; font-size: 22px; font-weight: 650; }

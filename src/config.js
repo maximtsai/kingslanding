@@ -293,7 +293,7 @@ export const config = {
     // it is always affordable.
     barricade: {
       name: 'Barricade', line: 'barricade', tier: 1, shape: 'wide',
-      cost: 10, hp: 150,
+      cost: 5, hp: 150,
       damage: 0, buildTime: 1.5,
       upgradesTo: ['bulwark', 'spearBunker']
     },
@@ -545,7 +545,7 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     // archer towers and no change, so the tutorial's "build until you cannot"
     // beat ends on an empty purse rather than on an awkward remainder the
     // player is left holding with nothing to spend it on.
-    levelStartGold: { one: 30 },
+    levelStartGold: { one: 38 },   // +8 to cover the two training dummies' worth of gold
     houseIncome: 10,           // per surviving house, at the start of build phase
     // Coins drop where a unit died and the king picks them up by walking over
     // them. TDD 12 is explicit that this is a feel-good mechanic and a reason to

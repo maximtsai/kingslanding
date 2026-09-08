@@ -148,6 +148,24 @@ A standalone island scene with no gameplay in it yet. Its twelve files were late
 
 ---
 
+## Session 7 — Training dummies drop gold
+**2026‑09‑08** · *First-hand*
+
+**Built:** destroying a training dummy now drops a 1-gold coin, like a killed enemy. Level 1's starting gold went from 30 to 38 to cover it.
+
+**Decision:** dummies drop gold so the first thing the player destroys teaches the game's core rule — kill something, it drops gold — instead of that lesson landing silently on wave 1's first casualty.
+
+---
+
+## Session 8 — Rising cost on archer towers and barricades
+**2026‑09‑08** · *First-hand*
+
+**Built:** the archer tower and the barricade now cost 10 gold more for each one already alive on the field (the 4th archer tower costs 15 + 30 = 45, not a flat 15). The refund on selling one reflects what was actually paid, not the listed base price. Barricade's base cost dropped from 10 to 5 to compensate for it now climbing too.
+
+**Decision:** priced these two flat instead of letting them stay flat, for two reasons. First, a flat price makes "cover every open tile with the cheapest option" the dominant strategy, which is both a cluttered, less readable island and a build phase with nothing left to decide once that tiling is done. Second, a rising price nudges the player toward upgrading what is already down — the more interesting tier-2 and tier-3 towers — instead of buying more of the same tier-1 building.
+
+---
+
 ## Where things stand / what's next
 
 **Working:** all Session 6 changes are in and running with no startup errors. The wave system was tested over 400 simulated seconds on all three levels — no wave ever appeared on the island, and none overlapped.

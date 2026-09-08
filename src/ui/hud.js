@@ -125,7 +125,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   // purse IS the game, and a button that keeps telling the player to empty it
   // would be giving bad advice.
   const firstBuildPhase = () => L1 && world.phase === PHASE.BUILD && world.waveIndex === 0;
-  const canAffordArcher = () => world.gold >= config.towers.archer.cost;
+  const canAffordArcher = () => world.gold >= world.buildCost('archer');
   // Exactly one of these is ever true, and affordability is the only thing that
   // decides which. OR-ing the archer glow with defenseTutorialActive() -- the
   // "no tower built yet" test that used to drive it on its own -- looked like
@@ -344,8 +344,9 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     feedback.tap();
     if (type) {
       const spec = config.towers[type];
-      confirmLabel.textContent = `${spec.name.toUpperCase()} - ${spec.cost} GOLD`;
-      confirmButton.setAttribute('aria-label', `Build ${spec.name} for ${spec.cost} gold`);
+      const cost = world.buildCost(type);
+      confirmLabel.textContent = `${spec.name.toUpperCase()} - ${cost} GOLD`;
+      confirmButton.setAttribute('aria-label', `Build ${spec.name} for ${cost} gold`);
     } else {
       confirmLabel.textContent = 'CASTLE - FREE';
       confirmButton.setAttribute('aria-label', 'Build castle here');
@@ -418,7 +419,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
       return;
     }
     const type = pending.type;
-    if (world.gold < config.towers[type].cost) { feedback.denied(); return; }
+    if (world.gold < world.buildCost(type)) { feedback.denied(); return; }
     if (!world.build(type, pending.i, pending.j)) { feedback.denied(); return; }
     // First build on level one ends the "build defense" tutorial.
     didBuildFirstTower = true;
@@ -449,7 +450,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
     button.onclick = () => {
       // Refusing a purchase is worth a sound too. A dead button that makes no
       // noise reads as a broken button.
-      if (world.gold < config.towers[type].cost) { feedback.denied(); refuse(button); return; }
+      if (world.gold < world.buildCost(type)) { feedback.denied(); refuse(button); return; }
       feedback.tap();
       setSelected(type);
     };
@@ -914,7 +915,7 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
   const goldValue = $('gold-value');
   const phaseLabel = $('phase-label');
   const phaseSub = $('phase-sub');
-  let lastGold, lastWaveText, lastPoor;
+  let lastGold, lastWaveText, lastPoor, lastCosts, lastAriaCosts;
   let shownBottomPanel = null;
 
   refreshPanels();
@@ -1147,15 +1148,29 @@ export function createHud({ stage, view, world, loop, audio, feedback, gridMesh,
         phaseSub.textContent = waveText;
       }
 
-      // One flag character per buyable tower, so the whole bar's state is one
-      // comparable string and the DOM is touched only when it flips.
-      const poor = buildButtons
-        .map(b => world.gold < config.towers[b.dataset.build].cost ? '1' : '0').join('');
-      if (poor !== lastPoor) {
+      // Costs rise as each archer tower or barricade goes up, not just on
+      // gold changing, so both the price and the afford flag are recomputed
+      // every tick -- one comparable string each, DOM touched only on a flip.
+      const costs = buildButtons.map(b => world.buildCost(b.dataset.build));
+      const poor = costs.map(c => world.gold < c ? '1' : '0').join('');
+      const costKey = costs.join(',');
+      if (costKey !== lastCosts) {
+        lastCosts = costKey;
+        buildButtons.forEach((b, k) => {
+          const costEl = b.querySelector('.cost');
+          if (costEl) costEl.textContent = `${costs[k]} gold`;
+        });
+      }
+      // The aria-label bakes the cost in too, so a rising price has to
+      // re-trigger this even on frames where the afford flag itself doesn't
+      // flip -- otherwise a screen reader keeps announcing the price the
+      // button opened at.
+      if (poor !== lastPoor || costKey !== lastAriaCosts) {
         lastPoor = poor;
+        lastAriaCosts = costKey;
         buildButtons.forEach((b, k) => {
           b.classList.toggle('poor', poor[k] === '1');
-          b.setAttribute('aria-label', `${config.towers[b.dataset.build].name || b.dataset.build}, ${config.towers[b.dataset.build].cost} gold${poor[k] === '1' ? ', not enough gold' : ''}`);
+          b.setAttribute('aria-label', `${config.towers[b.dataset.build].name || b.dataset.build}, ${costs[k]} gold${poor[k] === '1' ? ', not enough gold' : ''}`);
         });
       }
 

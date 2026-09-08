@@ -180,6 +180,10 @@ export function createWorld(board) {
     s.hp -= amount;
     world.events.push({ type: 'structureHit', structure: s });
     if (s.hp > 0) return;
+    // Training dummies drop a coin too, same as an enemy kill (TDD 12), so the
+    // very first thing the player destroys teaches the rule that will carry the
+    // rest of the game: kill something, it drops gold.
+    if (s.kind === 'trainingDummy') coins.drop(s.x, s.z, 1);
     structures.destroy(s);
     world.events.push({ type: 'structureDestroyed', structure: s });
     // Every enemy that was committed to it now needs somewhere else to go --
@@ -287,16 +291,35 @@ export function createWorld(board) {
     world.events.push({ type: 'waveStart', wave: world.waveIndex });
   };
 
+  // The archer tower and the barricade are priced against how many of that
+  // exact structure already stand: +10 gold per one alive. A flat price lets
+  // the winning move be "cover every open tile with the cheapest option",
+  // which is both a cluttered island and a build phase with nothing left to
+  // decide. The rising price pushes the player toward upgrading what is
+  // already down -- the more interesting towers -- rather than tiling more
+  // of the same one.
+  world.buildCost = function (type) {
+    const spec = config.towers[type];
+    if (!spec) return Infinity;
+    const count = structures.list.filter(s => s.alive && s.type === type).length;
+    return spec.cost + 10 * count;
+  };
+
   world.build = function (type, i, j) {
     if (world.phase !== PHASE.BUILD) return false;
     const spec = config.towers[type];
     // Only tier-1 entries are buyable from the build bar; everything else is
     // reached by upgrading something already standing.
     if (!spec || spec.tier !== 1) return false;
-    if (world.gold < spec.cost) return false;
+    const cost = world.buildCost(type);
+    if (world.gold < cost) return false;
     if (!structures.canPlace(i, j)) return false;
-    world.gold -= spec.cost;
+    world.gold -= cost;
     const built = structures.tower(type, i, j);
+    // The refund on sell is 50% of what was actually paid, not the listed
+    // base price -- otherwise a third archer tower bought at 35 would refund
+    // as if it cost 15.
+    built.invested = cost;
     world.events.push({ type: 'towerBuilt', structure: built, i, j });
     return true;
   };

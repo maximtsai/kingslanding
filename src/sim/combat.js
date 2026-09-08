@@ -117,14 +117,6 @@ export function createCombat(world) {
     p.dirZ = dz / length;
   }
 
-  function beginMiss(p) {
-    p.state = 'miss';
-    p.target = null;
-    p.vx = p.dirX * p.speed;
-    p.vy = p.dirY * p.speed;
-    p.vz = p.dirZ * p.speed;
-  }
-
   // Both ends of a shot's life are events: `impact` fires whether or not the
   // arrow found anybody, because a miss thudding into the dirt is a sound too,
   // and a volley that only makes noise when it connects reads as unresponsive.
@@ -146,13 +138,11 @@ export function createCombat(world) {
     p.state = 'submerged';
     p.life = P.submergedLifetime;
     p.y = 0;
-    // Set the sink velocity HERE rather than inheriting the arrival one. Two
-    // separate bugs came out of inheriting it. An arrow that simply ran out of
-    // flight over open water has no velocity at all -- only beginMiss ever
-    // assigned vx/vy/vz -- so the submerged step drove its position to NaN and
-    // left a garbage instance on the surface. And an arrow that DID come in as
-    // a miss arrived at full shaft speed, roughly 8 units/s, which fired it out
-    // of sight within a couple of frames instead of sinking.
+    // Set the sink velocity HERE rather than inheriting the arrival one. An
+    // arrow reaching open water has no velocity of its own -- the arc moves it
+    // by interpolating toward the aim point, not by integrating a speed -- so
+    // inheriting drove its position to NaN and left a garbage shaft floating on
+    // the surface.
     p.vx = p.dirX * P.sinkDrift;
     p.vz = p.dirZ * P.sinkDrift;
     p.vy = -P.sinkSpeed;
@@ -308,23 +298,6 @@ export function createCombat(world) {
         continue;
       }
 
-      if (p.state === 'miss') {
-        p.vy -= P.missGravity * dt;
-        p.x += p.vx * dt;
-        p.z += p.vz * dt;
-        p.y += p.vy * dt;
-        setDirection(p, p.vx, p.vy, p.vz);
-
-        const i = Math.round(p.x), j = Math.round(p.z);
-        if (board.isLand(i, j)) {
-          const surfaceY = board.groundYAt(p.x, p.z);
-          if (p.y <= surfaceY + 0.01) { impactEvent(p.x, p.z, false); groundArrow(p, p.x, p.z, surfaceY); }
-        } else if (p.y <= 0) {
-          enterWater(p);
-        }
-        continue;
-      }
-
       if (p.state === 'overtravel') {
         const distance = Math.min(p.overtravel, p.speed * dt);
         p.x += p.dirX * distance;
@@ -335,10 +308,17 @@ export function createCombat(world) {
         continue;
       }
 
-      if (!p.target.alive) {
-        beginMiss(p);
-        continue;
-      }
+      // The target died while this was in the air. Keep flying the arc that was
+      // already solved at release, so the arrow lands roughly where the enemy
+      // was standing and reads as a shot that arrived a moment too late.
+      //
+      // It used to convert to a free ballistic shot: full speed along whatever
+      // heading the arrow happened to hold, plus gravity. Early in an arc that
+      // heading is steeply upward, so a 40-degree climb at 8.5 u/s carried
+      // roughly fifteen units before it came down -- clear off a ten-unit
+      // island. Continuing the arc is also cheaper, because the flight is
+      // bounded by its own duration instead of running until it finds ground.
+      if (p.target && !p.target.alive) p.target = null;
 
       p.t += dt / p.duration;
       const t = Math.min(1, p.t);
@@ -354,11 +334,14 @@ export function createCombat(world) {
       setDirection(p, p.x - p.px, p.y - p.py, p.z - p.pz);
 
       if (t >= 1) {
-        const hit = p.target.isStructure ||
+        // No target means it outlived whoever it was aimed at: it arrives, but
+        // it cannot connect. Splash still applies, since a catapult lands on a
+        // point rather than on a person.
+        const hit = !!p.target && (p.target.isStructure ||
           Math.hypot(p.target.x - p.x, p.target.z - p.z) <=
-            (p.target.hitRadius || config.unit.hitRadius);
+            (p.target.hitRadius || config.unit.hitRadius));
         impactEvent(p.x, p.z, p.splash || hit, p.kind);
-        if (p.target.isStructure) {
+        if (p.target && p.target.isStructure) {
           world.damageStructure(p.target, p.damage, p.source);
         } else if (p.splash) {
           // The catapult lands on a point, not on a person. Everything inside

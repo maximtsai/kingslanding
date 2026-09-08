@@ -118,7 +118,6 @@ export const config = {
     groundLifetime: 5,
     embedLifetime: 5,
     overtravelDistance: 0.14,
-    missGravity: 4.8,
     // A splashed arrow slides under on its OWN terms, not on whatever velocity
     // it happened to arrive with. sinkSpeed is slow enough to watch; the
     // lifetime outlasts the descent so the shaft is well under the surface
@@ -492,7 +491,7 @@ export const config = {
   hero: {
     hp: 100,
     speed: 1.7,                // noticeably faster than a grunt, or he cannot respond
-    range: 3.5,
+    range: 3.0,
     minRange: 0,               // TDD 13: he is never helpless up close
     trajectory: 'arc',         // he lobs, so cliffs do not blind him
     // TDD 13 asks for "grunts die in two shots". 13 took four, which quietly
@@ -545,23 +544,38 @@ attackWindup: 0.26,   // draw takes most of the windup so the shot reads as load
     // archer towers and no change, so the tutorial's "build until you cannot"
     // beat ends on an empty purse rather than on an awkward remainder the
     // player is left holding with nothing to spend it on.
-    levelStartGold: { one: 38 },   // +8 to cover the two training dummies' worth of gold
+    levelStartGold: { one: 37 },   // +8 for the dummies' gold, -1 so the third dummy is not free money
     houseIncome: 10,           // per surviving house, at the start of build phase
     // Coins drop where a unit died and the king picks them up by walking over
     // them. TDD 12 is explicit that this is a feel-good mechanic and a reason to
     // move during a lull, never a requirement -- so anything still on the ground
     // when the wave clears flies to him automatically.
     coin: {
-      pickupRadius: 0.55,
+      pickupRadius: 0.275,       // halved -- the magnet still starts pulling at magnetRadius
       magnetRadius: 1.6,       // starts drifting toward him before he is on it
       magnetSpeed: 5.0,
       // The auto-collect sweep at end of wave. Halved from 14: at that speed the
       // coins were home before the player's eye had found them, which defeats
       // the only job the flight has -- TDD 12 credits the gold immediately and
-      // flies the coin purely so the payout is SEEN.
-      flySpeed: 7,
+      // flies the coin purely so the payout is SEEN. Eased down again from 7 so
+      // a big flock -- like all three dummy coins at once -- reads as a
+      // procession instead of a blur.
+      flySpeed: 5.5,
       scatter: 0.28,            // how far a coin bounces from the body
-      hopHeight: 0.34           // vertical lift above the ground when dropped
+      hopHeight: 0.34,          // vertical lift above the ground when dropped
+      // Purely cosmetic: the moment the king actually walks over a coin, it
+      // pops up past his head and shrinks away instead of just blinking out.
+      // Gold is already credited by the time this plays (coins.js), so it
+      // never touches the payout -- it is only ever telling the player the
+      // pickup registered.
+      collect: {
+        duration: 0.85,         // seconds from pickup to gone: 0.5 held + 0.35 shrinking
+        shrinkDelay: 0.5,       // holds full size this long before it starts shrinking
+        spinSpeed: 10,          // faster than a resting coin's 3.2, to read as a flourish
+        // The king's crown tips reach ~0.775 in rig space (see hero-view.js's
+        // own HP_HEIGHT); 0.85 clears it rather than stopping at his brow.
+        headClearance: 0.85
+      }
     }
   },
 

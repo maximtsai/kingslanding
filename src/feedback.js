@@ -96,7 +96,10 @@ export function createFeedback(world, audio, view, views) {
     castlePlaced() { audio.play('castlePlaced'); jolt(F.shake.castlePlaced); },
 
     // ---- economy ----
-    coinCollected() { audio.play('coin'); },
+    coinCollected() {
+      audio.play('coin');
+      if (V.coinView && V.coinView.collect) V.coinView.collect();
+    },
     // The sweep pays out every coin left on the ground at once. One chime per
     // coin would be forty voices; a short rising run of a few reads as "all of
     // them" and costs three.

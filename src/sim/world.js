@@ -112,10 +112,11 @@ export function createWorld(board) {
   }
 
   // Level 1 training dummies: static targets for the hero to practice on.
-  // Placed on tier-2 tiles on opposite sides of the plateau.
+  // Placed on tier-2 tiles spread around the plateau.
   if (board.level.id === 'one') {
     structures.trainingDummy(3, 2);
     structures.trainingDummy(4, 4);
+    structures.trainingDummy(5, 3);
   }
 
   // ---- enemies ----
@@ -183,7 +184,15 @@ export function createWorld(board) {
     // Training dummies drop a coin too, same as an enemy kill (TDD 12), so the
     // very first thing the player destroys teaches the rule that will carry the
     // rest of the game: kill something, it drops gold.
-    if (s.kind === 'trainingDummy') coins.drop(s.x, s.z, 1);
+    if (s.kind === 'trainingDummy') {
+      coins.drop(s.x, s.z, 1);
+      // The dummies die before the first wave, so there is no wave-clear sweep
+      // yet to collect what they dropped. Fly every coin on the ground to the
+      // king the moment the last one falls, rather than leaving gold sitting
+      // there with nothing left to teach the player to walk over it for.
+      const dummiesLeft = structures.list.some(o => o.kind === 'trainingDummy' && o.alive && o !== s);
+      if (!dummiesLeft) coins.sweep();
+    }
     structures.destroy(s);
     world.events.push({ type: 'structureDestroyed', structure: s });
     // Every enemy that was committed to it now needs somewhere else to go --

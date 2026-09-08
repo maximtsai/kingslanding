@@ -118,7 +118,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
   // The only consumer of world.events. Built after the views because it drives
   // them: a hit reaction is a thing the renderer does about something the
   // simulation reported, and this is the one place that translation happens.
-  const feedback = createFeedback(world, audio, view, { unitView, heroView, structureView });
+  const feedback = createFeedback(world, audio, view, { unitView, heroView, structureView, coinView });
 
   // The build overlay asks the simulation the same question a tower asks, rather
   // than reimplementing range. TDD 16: a range circle that lies about cliffs
@@ -274,7 +274,7 @@ function startLevel({ THREE, host, stage, levelId, go, audio }) {
       unitView.sync(world, blend, elapsed);
       structureView.sync(world, view.camera, elapsed, hud.inspectingId);
       projectileView.sync(world, blend);
-      coinView.sync(world, blend);
+      coinView.sync(world, blend, elapsed);
       heroView.sync(world, blend, elapsed, view.camera);
 
       // Level-one onboarding guides (extracted from main).
